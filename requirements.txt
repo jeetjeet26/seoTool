@@ -1,0 +1,6 @@
+pandas
+openpyxl
+anthropic
+requests
+python-dotenv
+
