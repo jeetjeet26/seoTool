@@ -112,18 +112,18 @@ def main():
             
             for _, row in top_pages.iterrows():
                 url = row.get(url_col, '')
-                current_title = row.get(title_col, '')
-                current_h1 = row.get(h1_col, '')
+                current_title = row.get(title_col, '') if pd.notna(row.get(title_col, '')) else ''
+                current_h1 = row.get(h1_col, '') if pd.notna(row.get(h1_col, '')) else ''
+                current_desc = row.get('Meta Description 1', '') if pd.notna(row.get('Meta Description 1', '')) else ''
                 
-                # For onpage, we need 'current_content'. 
-                # SF doesn't export full body content by default. 
-                # We might use 'Meta Description' or just H1 for the prompt as "Intro" is hard to get without custom extraction.
-                # The prompt says: "Input: ... Current H1, Top Keywords".
-                # Function optimize_onpage requests "Introductory Paragraph".
-                # Since we don't have it from standard SF export, we'll pass H1 and maybe Meta Description as context,
-                # or just simulate it/ask Agent to write one based on H1.
-                # I'll pass Meta Description as 'content' proxy for now.
-                current_desc = row.get('Meta Description 1', '')
+                # Convert to string and handle NaN
+                current_title = str(current_title) if current_title else ''
+                current_h1 = str(current_h1) if current_h1 else ''
+                current_desc = str(current_desc) if current_desc else ''
+                
+                print(f"  Processing: {url}")
+                print(f"    Current Title: {current_title[:50]}..." if len(current_title) > 50 else f"    Current Title: {current_title or '(empty)'}")
+                print(f"    Current H1: {current_h1[:50]}..." if len(current_h1) > 50 else f"    Current H1: {current_h1 or '(empty)'}")
 
                 # Metadata Optimization
                 meta_res = agent.optimize_metadata({
@@ -137,6 +137,7 @@ def main():
                     "keywords": ", ".join(target_keywords),
                     "current_title": current_title,
                     "proposed_title": meta_res.get('title', ''),
+                    "current_h1": current_h1,
                     "current_desc": current_desc,
                     "proposed_desc": meta_res.get('meta_description', '')
                 })
@@ -145,15 +146,21 @@ def main():
                 onpage_res = agent.optimize_onpage({
                     "url": url,
                     "current_h1": current_h1,
-                    "current_content": current_desc, # Proxying
-                    "target_keyword": target_keywords[0] # Use primary city keyword
+                    "current_content": current_desc,
+                    "target_keyword": target_keywords[0]
                 })
                 
                 onpage_recs.append({
                     "url": url,
                     "keyword": target_keywords[0],
-                    "original_content": f"H1: {current_h1}\nDesc: {current_desc}",
-                    "proposed_content": f"H1: {onpage_res.get('h1', '')}\nIntro: {onpage_res.get('content', '')}"
+                    "current_title": current_title,
+                    "proposed_title": meta_res.get('title', ''),
+                    "current_h1": current_h1,
+                    "proposed_h1": onpage_res.get('h1', ''),
+                    "current_meta_desc": current_desc,
+                    "proposed_meta_desc": meta_res.get('meta_description', ''),
+                    "original_content": "",  # Only include if we have actual body content
+                    "proposed_content": onpage_res.get('content', '')
                 })
                 
         except Exception as e:
@@ -161,11 +168,13 @@ def main():
 
     # 4. Report Generation
     print("\n--- Step 4: Building Report ---")
-    reporter = ExcelReportBuilder(output_path=output_file)
+    # Pass the agent to the reporter for AI-powered audit suggestions
+    reporter = ExcelReportBuilder(output_path=output_file, agent=agent)
     reporter.load_workbook()
     
     # Update Tabs
     reporter.update_technical_seo_tab(temp_dir)
+    print("  Creating detailed audit log with AI-powered suggestions...")
     reporter.create_detailed_audit_tab(temp_dir)
     reporter.update_onpage_recommendations(onpage_recs)
     reporter.update_metadata_tab(metadata_recs)
