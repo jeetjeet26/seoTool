@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import pandas as pd
 from modules.crawler import Crawler
 from modules.semrush import SemrushClient
@@ -26,7 +27,7 @@ def main():
         Config.validate()
     except ValueError as e:
         print(f"Configuration Error: {e}")
-        return
+        return 1
 
     # 1. Run Crawler
     print("\n--- Step 1: Crawling ---")
@@ -36,7 +37,7 @@ def main():
         crawler.run_crawl(client_url, temp_dir)
     except Exception as e:
         print(f"Critical Error during crawl: {e}")
-        return
+        return 1
 
     # 2. Semrush Analysis
     print("\n--- Step 2: Semrush Data ---")
@@ -181,7 +182,8 @@ def main():
     
     reporter.save_workbook()
     print("\nDone! Report generated.")
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 

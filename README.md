@@ -62,11 +62,17 @@ Before running the tool, ensure you have the following:
     ```
 
 3.  **Configure Environment Variables**:
-    Create a `.env` file in the root directory (based on `config.py` expectations) or ensure `config.py` can access the following variables:
+    Copy `.env.example` to `.env`, then fill in your API keys and Screaming Frog path:
     
     *   `SEMRUSH_API_KEY`
     *   `ANTHROPIC_API_KEY`
-    *   `SF_HEADLESS_PATH` (Path to your local Screaming Frog executable)
+    *   `SCREAMING_FROG_PATH` (Path to your local Screaming Frog executable)
+
+    Common Screaming Frog paths:
+    *   macOS: `/Applications/Screaming Frog SEO Spider.app/Contents/MacOS/ScreamingFrogSEOSpiderLauncher`
+    *   Windows: `C:\Program Files (x86)\Screaming Frog SEO Spider\ScreamingFrogSEOSpiderCLI.exe`
+
+    `SF_HEADLESS_PATH` is also supported for backwards compatibility, but `SCREAMING_FROG_PATH` is preferred.
 
 ## 🏃 Usage
 
