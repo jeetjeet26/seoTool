@@ -56,10 +56,21 @@ Before running the tool, ensure you have the following:
     cd seoTool
     ```
 
-2.  **Install Python dependencies**:
+2.  **Create a Python 3 virtual environment and install dependencies**:
     ```bash
-    pip install -r requirements.txt
+    ./setup.sh
+    source .venv/bin/activate
     ```
+
+    If you prefer to run the commands manually:
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
+    ```
+
+    On macOS, do not use bare `pip` or `python` before activating the virtual environment. Older Macs may point those commands to Python 2, which cannot run this project.
 
 3.  **Configure Environment Variables**:
     Copy `.env.example` to `.env`, then fill in your API keys and Screaming Frog path:
@@ -79,6 +90,7 @@ Before running the tool, ensure you have the following:
 Run the tool via the command line, specifying the target URL and the city for local SEO context.
 
 ```bash
+source .venv/bin/activate
 python main.py "https://www.example-apartments.com" --city "Dallas"
 ```
 
