@@ -19,17 +19,37 @@ class ExcelReportBuilder:
     def load_workbook(self):
         if not os.path.exists(self.template_path):
             print(f"Error: Template file '{self.template_path}' not found.")
-            # For development purposes, create a blank workbook if template is missing
-            # But in production, we really need the template.
             self.wb = openpyxl.Workbook()
+            self.wb.active.title = "Technical SEO"
             print("Created a new blank workbook instead.")
         else:
             self.wb = openpyxl.load_workbook(self.template_path)
 
     def save_workbook(self):
         if self.wb:
+            self._remove_empty_default_sheet()
+            if "Technical SEO" in self.wb.sheetnames:
+                self.wb.active = self.wb.sheetnames.index("Technical SEO")
             self.wb.save(self.output_path)
             print(f"Report saved to: {self.output_path}")
+
+    def _remove_empty_default_sheet(self):
+        """Remove Excel's default blank sheet once report tabs have been created."""
+        if not self.wb or "Sheet" not in self.wb.sheetnames or len(self.wb.sheetnames) == 1:
+            return
+
+        ws = self.wb["Sheet"]
+        is_empty = ws.max_row == 1 and ws.max_column == 1 and ws["A1"].value is None
+        if is_empty:
+            self.wb.remove(ws)
+
+    def _find_crawl_csv(self, crawl_output_dir: str, *filenames: str) -> Optional[str]:
+        """Find Screaming Frog CSVs while tolerating small filename differences."""
+        for filename in filenames:
+            path = os.path.join(crawl_output_dir, filename)
+            if os.path.exists(path):
+                return path
+        return None
 
     def update_technical_seo_tab(self, crawl_output_dir: str):
         """
@@ -52,18 +72,30 @@ class ExcelReportBuilder:
         
         # Load CSVs
         files = {
-            "4xx": os.path.join(crawl_output_dir, "response_codes_client_error_4xx.csv"),
-            "missing_alt": os.path.join(crawl_output_dir, "images_missing_alt_text.csv"),
-            # Add others if needed for other metrics
+            "Broken Links": self._find_crawl_csv(
+                crawl_output_dir,
+                "response_codes_client_error_(4xx).csv",
+                "response_codes_client_error_4xx.csv",
+            ),
+            "Redirects": self._find_crawl_csv(
+                crawl_output_dir,
+                "response_codes_redirection_(3xx).csv",
+                "response_codes_redirection_3xx.csv",
+            ),
+            "Missing Alt Text": self._find_crawl_csv(crawl_output_dir, "images_missing_alt_text.csv"),
+            "Missing Alt Attribute": self._find_crawl_csv(crawl_output_dir, "images_missing_alt_attribute.csv"),
+            "Missing Page Titles": self._find_crawl_csv(crawl_output_dir, "page_titles_missing.csv"),
+            "Missing Meta Descriptions": self._find_crawl_csv(crawl_output_dir, "meta_description_missing.csv"),
+            "Missing H1": self._find_crawl_csv(crawl_output_dir, "h1_missing.csv"),
+            "Multiple H1": self._find_crawl_csv(crawl_output_dir, "h1_multiple.csv"),
+            "Missing Canonicals": self._find_crawl_csv(crawl_output_dir, "canonicals_missing.csv"),
         }
         
         counts = {}
         for key, path in files.items():
-            if os.path.exists(path):
+            if path and os.path.exists(path):
                 try:
                     df = pd.read_csv(path)
-                    # Screaming Frog CSVs often have a header row 2 (index 1) or 1 (index 0). 
-                    # Assuming standard export.
                     counts[key] = len(df)
                 except Exception as e:
                     print(f"Error reading {path}: {e}")
@@ -77,8 +109,8 @@ class ExcelReportBuilder:
         # Implementation strategy: Search for labels in column A/B.
         
         labels_map = {
-            "Broken Links": counts.get("4xx", 0),
-            "Missing Alt Text": counts.get("missing_alt", 0)
+            "Broken Links": counts.get("Broken Links", 0),
+            "Missing Alt Text": counts.get("Missing Alt Text", 0)
         }
         
         # Naive search in first 50 rows, 10 cols
@@ -100,7 +132,35 @@ class ExcelReportBuilder:
                         # Just an example update
                         
         if not updated:
-            print("Warning: Could not find 'Broken Links' or 'Missing Alt Text' labels in Technical SEO tab.")
+            print("Warning: Could not find 'Broken Links' or 'Missing Alt Text' labels in Technical SEO tab. Writing summary table instead.")
+            is_empty_sheet = ws.max_row == 1 and ws.max_column == 1 and ws["A1"].value is None
+            self._write_technical_summary(ws, counts, files, replace=is_empty_sheet)
+
+    def _write_technical_summary(self, ws, counts: dict, files: dict, replace: bool = False):
+        """Populate a usable Technical SEO tab when no template layout is available."""
+        if replace:
+            ws.delete_rows(1, ws.max_row)
+            header_row = 1
+        else:
+            header_row = ws.max_row + 2
+
+        ws.cell(row=header_row, column=1, value="Issue")
+        ws.cell(row=header_row, column=2, value="Occurrences")
+        ws.cell(row=header_row, column=3, value="Source File")
+        for cell in ws[header_row]:
+            cell.font = Font(bold=True)
+
+        current_row = header_row + 1
+        for issue, count in counts.items():
+            source_file = os.path.basename(files[issue]) if files.get(issue) else ""
+            ws.cell(row=current_row, column=1, value=issue)
+            ws.cell(row=current_row, column=2, value=count)
+            ws.cell(row=current_row, column=3, value=source_file)
+            current_row += 1
+
+        ws.column_dimensions["A"].width = 28
+        ws.column_dimensions["B"].width = 14
+        ws.column_dimensions["C"].width = 45
 
 
     def _get_valid_urls_from_crawl(self, crawl_output_dir: str) -> list:
