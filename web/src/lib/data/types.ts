@@ -76,6 +76,8 @@ export interface Finding {
   severity: "Critical" | "High" | "Medium" | "Low" | "Info";
   title: string;
   occurrences: number;
+  ruleKey: string;
+  status: "open" | "accepted" | "resolved" | "dismissed";
   pageUrl: string;
   resourceUrl?: string;
   recommendation: string;

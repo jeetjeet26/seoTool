@@ -43,7 +43,9 @@ type AuditRow = {
 type FindingRow = {
   id: string;
   category: string;
+  rule_key: string;
   severity: string;
+  status: Finding["status"];
   title: string;
   page_url: string | null;
   resource_url: string | null;
@@ -229,7 +231,7 @@ export const supabaseData: DataProvider = {
     const { data, error } = await supabase
       .from("findings")
       .select(
-        "id,category,severity,title,page_url,resource_url,recommendation",
+        "id,category,rule_key,severity,status,title,page_url,resource_url,recommendation",
       )
       .eq("audit_id", auditId)
       .order("severity");
@@ -241,6 +243,8 @@ export const supabaseData: DataProvider = {
       severity: mapSeverity(row.severity),
       title: row.title,
       occurrences: 1,
+      ruleKey: row.rule_key,
+      status: row.status,
       pageUrl: row.page_url ?? "",
       resourceUrl: row.resource_url ?? undefined,
       recommendation: row.recommendation,

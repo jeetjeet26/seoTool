@@ -18,6 +18,9 @@
 .field-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
 .tool-review{padding:0 0 20px}
 .tool-review .filterbar{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--muted)}
+
+/* Grouped audit findings */
+.url-cell details{min-width:260px}.url-cell summary{cursor:pointer;color:var(--green);font-weight:650;list-style-position:outside}.finding-url-list{display:grid;gap:7px;max-height:320px;overflow:auto;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:7px;background:#fafbfa}.finding-url-list label{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px}.finding-url-list label input{margin-top:2px}.finding-url-list a{display:flex;align-items:flex-start;gap:4px;overflow-wrap:anywhere}.finding-url-list a svg{width:13px;height:13px;flex:0 0 auto}.finding-url-list label.resolved a,.finding-url-list label.resolved span{text-decoration:line-through;color:var(--muted)}
 .tool-metadata-list{display:grid;gap:14px;padding:18px 20px}
 .tool-metadata-list .cardish{border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;gap:12px;background:white}
 .tool-metadata-list .cardish header{display:flex;align-items:center;justify-content:space-between;gap:14px}
