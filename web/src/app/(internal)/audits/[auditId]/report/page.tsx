@@ -37,7 +37,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
       <div><h2>Executive summary</h2><p>{executiveSummary(summary, findings.length)}</p></div>
     </section>
     <section className="category-grid" aria-label="SEO category scores">
-      {categoryCards.map((item) => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><div className="mini-progress"><span style={{ width: `${item.percent}%` }}/></div><small>{item.note}</small></article>)}
+      {categoryCards.map((item) => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></article>)}
     </section>
     <section className="card report-section"><div className="section-title"><div><h2>Prioritized findings</h2><p>Filter issues, open affected URLs, and select approved findings for task review.</p></div></div><FindingsTable findings={findings} auditId={auditId}/></section>
     <AuditInsights summary={summary}/>
@@ -53,21 +53,19 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
 function buildCategoryCards(summary: AuditSummary) {
   const counts = summary.category_counts ?? {};
   const entries = Object.entries(counts);
-  const total = Math.max(1, summary.finding_count ?? entries.reduce((sum, [, value]) => sum + value, 0));
   if (!entries.length) {
     return [
-      { label: "Crawlability", value: 0, percent: 100, note: "Awaiting crawl" },
-      { label: "Metadata", value: 0, percent: 100, note: "Awaiting crawl" },
-      { label: "Content", value: 0, percent: 100, note: "Awaiting crawl" },
-      { label: "Links", value: 0, percent: 100, note: "Awaiting crawl" },
-      { label: "Performance", value: 0, percent: 100, note: "Awaiting analysis" },
-      { label: "Accessibility", value: 0, percent: 100, note: "Awaiting analysis" },
+      { label: "Crawlability", value: 0, note: "Awaiting crawl" },
+      { label: "Metadata", value: 0, note: "Awaiting crawl" },
+      { label: "Content", value: 0, note: "Awaiting crawl" },
+      { label: "Links", value: 0, note: "Awaiting crawl" },
+      { label: "Performance", value: 0, note: "Awaiting analysis" },
+      { label: "Accessibility", value: 0, note: "Awaiting analysis" },
     ];
   }
   return entries.slice(0, 6).map(([label, value]) => ({
     label: label.replaceAll("_", " "),
     value,
-    percent: Math.max(8, 100 - Math.round((value / total) * 100)),
     note: `${value} finding${value === 1 ? "" : "s"}`,
   }));
 }
