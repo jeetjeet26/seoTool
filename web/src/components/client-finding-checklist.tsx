@@ -9,9 +9,14 @@ import { Icon } from "./icons";
 export function ClientFindingChecklist({
   findings,
   token,
+  onStatusesChanged,
 }: {
   findings: Finding[];
   token: string;
+  onStatusesChanged: (
+    findingIds: string[],
+    status: Finding["status"],
+  ) => void;
 }) {
   const [filter, setFilter] = useState("All");
   const [message, setMessage] = useState("");
@@ -62,6 +67,13 @@ export function ClientFindingChecklist({
       if (!response.ok) {
         setStatusOverrides(previous);
         setMessage(body.error ?? "The URL status could not be updated.");
+      } else {
+        onStatusesChanged(occurrence.findingIds, nextStatus);
+        setStatusOverrides((current) => {
+          const next = new Map(current);
+          occurrence.findingIds.forEach((id) => next.delete(id));
+          return next;
+        });
       }
     } catch {
       setStatusOverrides(previous);

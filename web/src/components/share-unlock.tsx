@@ -110,17 +110,31 @@ export function ShareUnlock({ token }: { token: string }) {
     }
   }
 
+  function updateFindingStatuses(
+    findingIds: string[],
+    status: PortalPayload["findings"][number]["status"],
+  ) {
+    const ids = new Set(findingIds);
+    setPortal((current) => current ? {
+      ...current,
+      findings: current.findings.map((finding) => (
+        ids.has(finding.id) ? { ...finding, status } : finding
+      )),
+    } : current);
+  }
+
   if (portal) {
     const progress =
       portal.totalTasks > 0
         ? Math.round((portal.completedTasks / portal.totalTasks) * 100)
         : 0;
-    const findingsRevision = portal.findings
-      .map((finding) => `${finding.id}:${finding.status}`)
-      .join("|");
     return <div className="share-report">
       <div className="share-heading"><div><p className="eyebrow">Shared audit</p><h1>{portal.clientName}</h1><p>{portal.reportName}</p></div>{portal.score !== null && <span className="score-ring">{portal.score}<small>/100</small></span>}</div>
-      <ClientFindingChecklist key={findingsRevision} findings={portal.findings} token={token}/>
+      <ClientFindingChecklist
+        findings={portal.findings}
+        token={token}
+        onStatusesChanged={updateFindingStatuses}
+      />
       <AuditInsights summary={portal.summary}/>
       {portal.totalTasks > 0 && <>
         <section className="card"><div className="section-title"><div><h2>Assigned task progress</h2><p>{portal.completedTasks} of {portal.totalTasks} assigned tasks completed</p></div><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%` }} /></div></section>
