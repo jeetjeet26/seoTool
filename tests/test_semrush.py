@@ -5,11 +5,17 @@ from modules.semrush import SemrushClient
 
 
 class FakeResponse:
-    def __init__(self, text: str):
+    def __init__(self, text: str = "", payload=None):
         self.text = text
+        self.payload = payload
 
     def raise_for_status(self):
         return None
+
+    def json(self):
+        if self.payload is None:
+            raise ValueError("No JSON payload")
+        return self.payload
 
 
 def make_client() -> SemrushClient:
@@ -54,20 +60,27 @@ class SemrushReportTests(unittest.TestCase):
             return_value=FakeResponse("ERROR 50 :: NOTHING FOUND"),
         ):
             self.assertEqual(client.get_organic_positions("example.com"), [])
-            self.assertEqual(client.get_backlinks_overview("example.com"), {})
-        diagnostics = client.consume_diagnostics()
-        self.assertTrue(any("ERROR 50" in message for message in diagnostics))
+        self.assertEqual(client.consume_diagnostics(), [])
 
     def test_parses_backlinks_overview(self):
-        body = (
-            "ascore;total;domains_num;urls_num;ips_num\n"
-            "34;1200;85;400;60\n"
-        )
         client = make_client()
-        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+        with patch(
+            "modules.semrush.requests.get",
+            return_value=FakeResponse(
+                "ascore;total;domains_num;urls_num;ips_num\n"
+                "34;1200;85;400;60\n"
+            ),
+        ):
             overview = client.get_backlinks_overview("example.com")
         self.assertEqual(overview["authority_score"], 34)
         self.assertEqual(overview["referring_domains"], 85)
+
+    def test_diagnostics_redact_api_keys(self):
+        client = make_client()
+        client._diagnostic("request failed: https://api.semrush.com/?key=test-key&type=x")
+        diagnostic = client.consume_diagnostics()[0]
+        self.assertNotIn("test-key", diagnostic)
+        self.assertIn("[REDACTED]", diagnostic)
 
     def test_parses_competitors(self):
         body = (

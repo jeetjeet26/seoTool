@@ -1,9 +1,13 @@
-import requests
-from config import Config
+import re
 import time
+
+import requests
+
+from config import Config
 
 class SemrushClient:
     BASE_URL = "https://api.semrush.com/"
+    BACKLINKS_OVERVIEW_URL = "https://api.semrush.com/analytics/v1/"
 
     def __init__(self):
         self.api_key = Config.SEMRUSH_API_KEY
@@ -14,7 +18,10 @@ class SemrushClient:
     def _diagnostic(self, message: str) -> None:
         if not hasattr(self, "diagnostics"):
             self.diagnostics = []
-        self.diagnostics.append(message[:500])
+        sanitized = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED]", message)
+        if self.api_key:
+            sanitized = sanitized.replace(self.api_key, "[REDACTED]")
+        self.diagnostics.append(sanitized[:500])
 
     def consume_diagnostics(self) -> list[str]:
         diagnostics = list(getattr(self, "diagnostics", []))
@@ -127,13 +134,17 @@ class SemrushClient:
     # Discovery reports used by keyword strategy and technical correlation
     # ------------------------------------------------------------------
 
-    def _report_rows(self, params: dict) -> list[dict]:
+    def _report_rows(self, params: dict, base_url: str | None = None) -> list[dict]:
         """Run a Semrush analytics report and return rows keyed by header name."""
         if not self.api_key:
             return []
         request_params = {"key": self.api_key, "database": "us", **params}
         try:
-            response = requests.get(self.BASE_URL, params=request_params, timeout=60)
+            response = requests.get(
+                base_url or self.BASE_URL,
+                params=request_params,
+                timeout=60,
+            )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             print(f"Error fetching Semrush report {params.get('type')}: {e}")
@@ -141,6 +152,8 @@ class SemrushClient:
             return []
 
         text = response.text.strip()
+        if text.startswith("ERROR 50"):
+            return []
         if text.startswith("ERROR"):
             self._diagnostic(f"{params.get('type')}: {text}")
             return []
@@ -213,7 +226,8 @@ class SemrushClient:
                 "target": domain,
                 "target_type": "root_domain",
                 "export_columns": "ascore,total,domains_num,urls_num,ips_num",
-            }
+            },
+            base_url=self.BACKLINKS_OVERVIEW_URL,
         )
         if not rows:
             return {}

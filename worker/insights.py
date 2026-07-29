@@ -7,6 +7,7 @@ hard-coded phrases.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -139,6 +140,7 @@ class InsightRunner:
             targets = [page.url for page in pages[:MAX_PAGESPEED_PAGES]] or [
                 job.target_url
             ]
+            pagespeed_errors: list[Exception] = []
             for url in targets:
                 try:
                     page_result = self.pagespeed.analyze_url(url)
@@ -150,13 +152,22 @@ class InsightRunner:
                         page_result.pop("accessibility_issues", None)
                     result["page_experience"].append(page_result)
                 except Exception as exc:  # noqa: BLE001
-                    result["enrichment_errors"].append(_safe_error("pagespeed", exc))
+                    pagespeed_errors.append(exc)
+            if pagespeed_errors:
+                error = _safe_error("pagespeed", pagespeed_errors[0])
+                error["message"] = (
+                    f"{error['message']} "
+                    f"({len(pagespeed_errors)} of {len(targets)} sampled pages failed)"
+                )
+                result["enrichment_errors"].append(error)
 
         return result
 
 
 def _safe_error(service: str, exc: Exception) -> dict[str, str]:
+    message = str(exc) or exc.__class__.__name__
+    message = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED]", message)
     return {
         "service": service,
-        "message": str(exc)[:500] or exc.__class__.__name__,
+        "message": message[:500],
     }
