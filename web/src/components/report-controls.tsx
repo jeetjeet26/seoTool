@@ -108,7 +108,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
                 <div className="finding-url-list">
                   {item.urls.map((occurrence) => {
                     const pendingKey = `${item.key}:${occurrence.url}`;
-                    return <label key={occurrence.key} className={occurrence.resolved ? "resolved" : ""}>
+                    return <div key={occurrence.key} className={`finding-url-item${occurrence.resolved ? " resolved" : ""}`}>
                       <input
                         type="checkbox"
                         checked={occurrence.resolved}
@@ -119,7 +119,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
                       {occurrence.url
                         ? <a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>
                         : <span>URL not reported</span>}
-                    </label>;
+                    </div>;
                   })}
                 </div>
               </details>
