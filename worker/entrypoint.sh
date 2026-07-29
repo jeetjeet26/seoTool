@@ -16,4 +16,6 @@ fi
 
 export SCREAMING_FROG_PATH="${SCREAMING_FROG_PATH:-/usr/bin/screamingfrogseospider}"
 
+echo "entrypoint: licence installed, launching worker under xvfb-run"
+
 exec xvfb-run -a python -m worker.main

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import sys
+
+print("worker.main: module loading", file=sys.stderr, flush=True)
+
 import csv
 import logging
 import shutil
@@ -22,6 +26,7 @@ from worker.settings import WorkerSettings
 from worker.tool_repository import ToolRepository
 from worker.tools import ToolRunner
 
+print("worker.main: imports complete", file=sys.stderr, flush=True)
 
 LOGGER = logging.getLogger("seo_audit_worker")
 STOP_EVENT = threading.Event()
