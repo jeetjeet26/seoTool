@@ -81,6 +81,11 @@ class Crawler:
                 if re.search(r"\bFATAL\b", line, flags=re.IGNORECASE)
             ]
 
+            if result.returncode != 0 or fatal_lines:
+                # Surface full Screaming Frog output in worker logs for diagnosis.
+                print("Screaming Frog output (tail):")
+                print(combined_output[-6000:])
+
             if result.returncode != 0:
                 crash_detail = self._read_crash_file(combined_output)
                 detail = "\n".join(
