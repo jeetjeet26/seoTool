@@ -68,6 +68,14 @@ class InsightRunner:
                 related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
         except Exception as exc:  # noqa: BLE001
             result["enrichment_errors"].append(_safe_error("semrush", exc))
+        if hasattr(self.semrush, "consume_diagnostics"):
+            result["enrichment_errors"].extend(
+                {
+                    "service": "semrush",
+                    "message": message,
+                }
+                for message in self.semrush.consume_diagnostics()
+            )
 
         keywords = build_keyword_strategy(
             location=job.location,

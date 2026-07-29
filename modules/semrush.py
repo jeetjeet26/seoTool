@@ -7,8 +7,19 @@ class SemrushClient:
 
     def __init__(self):
         self.api_key = Config.SEMRUSH_API_KEY
+        self.diagnostics: list[str] = []
         if not self.api_key:
             print("Warning: SEMRUSH_API_KEY is not set.")
+
+    def _diagnostic(self, message: str) -> None:
+        if not hasattr(self, "diagnostics"):
+            self.diagnostics = []
+        self.diagnostics.append(message[:500])
+
+    def consume_diagnostics(self) -> list[str]:
+        diagnostics = list(getattr(self, "diagnostics", []))
+        self.diagnostics = []
+        return diagnostics
 
     def get_domain_overview(self, domain: str):
         """
@@ -27,14 +38,18 @@ class SemrushClient:
         }
 
         try:
-            response = requests.get(self.BASE_URL, params=params)
+            response = requests.get(self.BASE_URL, params=params, timeout=60)
             response.raise_for_status()
             
             # Response is usually CSV-like text. 
             # Header: Domain;Organic Keywords;Organic Traffic;Organic Cost;Adwords Keywords;Adwords Traffic;Adwords Cost
             # Data: example.com;123;456;...
             
-            lines = response.text.strip().split('\n')
+            response_text = response.text.strip()
+            if response_text.startswith("ERROR"):
+                self._diagnostic(f"domain_rank: {response_text}")
+                return {}
+            lines = response_text.split('\n')
             if len(lines) < 2:
                 print("Semrush: No data returned for domain overview.")
                 return {}
@@ -52,6 +67,7 @@ class SemrushClient:
 
         except requests.exceptions.RequestException as e:
             print(f"Error fetching Semrush domain overview: {e}")
+            self._diagnostic(f"domain_rank request failed: {e}")
             return {}
 
     def get_keyword_data(self, keywords_list: list):
@@ -121,10 +137,14 @@ class SemrushClient:
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             print(f"Error fetching Semrush report {params.get('type')}: {e}")
+            self._diagnostic(f"{params.get('type')} request failed: {e}")
             return []
 
         text = response.text.strip()
-        if not text or text.startswith("ERROR"):
+        if text.startswith("ERROR"):
+            self._diagnostic(f"{params.get('type')}: {text}")
+            return []
+        if not text:
             return []
         lines = text.split("\n")
         if len(lines) < 2:

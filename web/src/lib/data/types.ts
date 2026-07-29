@@ -8,9 +8,10 @@ export type AuditStatus =
 
 export interface ContentRecommendation {
   url: string;
-  title?: string;
-  h1?: string;
-  meta_description?: string;
+  current_title?: string;
+  current_h1?: string;
+  current_meta_description?: string;
+  keywords?: string[];
   proposed_title?: string;
   proposed_h1?: string;
   proposed_meta_description?: string;
@@ -26,15 +27,66 @@ export interface PageExperience {
   accessibility_issues?: Array<{ id?: string; title?: string }>;
 }
 
+export interface KeywordStrategyItem {
+  keyword: string;
+  source: "ranking" | "related" | "seed";
+  volume: number;
+  cpc: number;
+  difficulty: number;
+  competition: number;
+  position?: number | null;
+  intent: string;
+  score: number;
+  assigned_page: string;
+}
+
+export interface CompetitorMetric {
+  domain: string;
+  competition_level: number;
+  common_keywords: number;
+  organic_keywords: number;
+  organic_traffic: number;
+}
+
+export interface AltTextRecommendation {
+  image_url: string;
+  page_url: string;
+  current_alt_text?: string;
+  proposed_alt_text?: string;
+  alt_text_length?: number;
+  warnings?: string[];
+}
+
+export interface SiteInventorySummary {
+  page_count?: number;
+  sitemap_url_count?: number;
+  sitemap_only_count?: number;
+  crawl_only_count?: number;
+  missing_title_count?: number;
+  missing_description_count?: number;
+  missing_h1_count?: number;
+  duplicate_title_count?: number;
+  duplicate_description_count?: number;
+  images_missing_alt_count?: number;
+  sitemap_errors?: string[];
+}
+
 export interface AuditSummary {
   score?: number;
   pages_scanned?: number;
   finding_count?: number;
   severity_counts?: Record<string, number>;
   category_counts?: Record<string, number>;
+  target_url?: string;
+  target_location?: string;
   semrush?: Record<string, unknown>;
+  competitors?: CompetitorMetric[];
+  backlinks?: Record<string, number>;
+  keyword_strategy?: KeywordStrategyItem[];
   keyword_metrics?: Record<string, unknown>;
+  site_inventory?: SiteInventorySummary;
   content_recommendations?: ContentRecommendation[];
+  alt_text_recommendations?: AltTextRecommendation[];
   page_experience?: PageExperience[];
   enrichment_errors?: Array<{ service: string; message: string }>;
 }

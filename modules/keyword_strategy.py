@@ -23,6 +23,23 @@ TRANSACTIONAL_MARKERS = (
     "move in",
 )
 INFORMATIONAL_MARKERS = ("what", "how", "why", "cost of", "average", "guide")
+HOUSING_MARKERS = (
+    "apartment",
+    "apartments",
+    "rent",
+    "rental",
+    "rentals",
+    "studio",
+    "bedroom",
+    "bedrooms",
+    "loft",
+    "lofts",
+    "flat",
+    "flats",
+    "housing",
+    "townhome",
+    "townhomes",
+)
 
 PAGE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("floor-plan", ("bedroom", "studio", "floor plan", "floorplan", "loft")),
@@ -103,6 +120,18 @@ def classify_intent(keyword: str, brand_tokens: set[str]) -> str:
     return "commercial"
 
 
+def is_relevant_keyword(
+    keyword: str,
+    location_tokens: set[str],
+    brand_tokens: set[str],
+) -> bool:
+    """Require housing intent plus a location or property-brand signal."""
+    tokens = set(re.findall(r"[a-z0-9]+", keyword.lower()))
+    has_housing_intent = bool(tokens & set(HOUSING_MARKERS))
+    has_market_signal = bool(tokens & location_tokens) or bool(tokens & brand_tokens)
+    return has_housing_intent and has_market_signal
+
+
 def score_candidate(candidate: KeywordCandidate, location_tokens: set[str]) -> float:
     """0-100 score blending volume, difficulty, ranking opportunity, locality."""
     volume_points = min(40.0, (candidate.volume or 0) ** 0.5 * 4)
@@ -166,7 +195,11 @@ def build_keyword_strategy(
         if token not in {"www", "com", "net", "org", "apartments", "the"}
         and len(token) > 2
     }
-    location_tokens = set(re.findall(r"[a-z0-9]+", location.lower()))
+    location_tokens = {
+        token
+        for token in re.findall(r"[a-z0-9]+", location.lower())
+        if len(token) > 2
+    }
 
     merged: dict[str, KeywordCandidate] = {}
 
@@ -188,7 +221,11 @@ def build_keyword_strategy(
 
     for row in related or []:
         keyword = (row.get("keyword") or "").strip().lower()
-        if not keyword or keyword in merged:
+        if (
+            not keyword
+            or keyword in merged
+            or not is_relevant_keyword(keyword, location_tokens, brand_tokens)
+        ):
             continue
         merged[keyword] = KeywordCandidate(
             keyword=keyword,

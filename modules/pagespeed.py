@@ -42,8 +42,22 @@ class PageSpeedClient:
             response = self.session.get(self.BASE_URL, params=params, timeout=self.timeout)
             response.raise_for_status()
             payload = response.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise PageSpeedError(f"PageSpeed request failed for {url}") from exc
+        except requests.RequestException as exc:
+            response = getattr(exc, "response", None)
+            status = f"HTTP {response.status_code}" if response is not None else exc.__class__.__name__
+            detail = ""
+            if response is not None:
+                try:
+                    body = response.json()
+                    detail = str(body.get("error", {}).get("message", ""))
+                except (ValueError, AttributeError):
+                    detail = response.text[:300]
+            message = f"PageSpeed request failed for {url}: {status}"
+            if detail:
+                message += f" — {detail[:300]}"
+            raise PageSpeedError(message) from exc
+        except ValueError as exc:
+            raise PageSpeedError(f"PageSpeed returned invalid JSON for {url}") from exc
 
         lighthouse = payload.get("lighthouseResult")
         if not isinstance(lighthouse, dict):

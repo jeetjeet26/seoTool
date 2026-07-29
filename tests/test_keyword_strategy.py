@@ -4,6 +4,7 @@ from modules.keyword_strategy import (
     assign_page,
     build_keyword_strategy,
     classify_intent,
+    is_relevant_keyword,
     seed_phrases,
 )
 
@@ -87,7 +88,8 @@ class KeywordStrategyTests(unittest.TestCase):
 
     def test_max_keywords_cap(self):
         related = [
-            {"keyword": f"keyword {index}", "volume": index} for index in range(100)
+            {"keyword": f"apartments for rent dallas {index}", "volume": index}
+            for index in range(100)
         ]
         results = build_keyword_strategy(
             location="Dallas",
@@ -96,6 +98,18 @@ class KeywordStrategyTests(unittest.TestCase):
             max_keywords=25,
         )
         self.assertEqual(len(results), 25)
+
+    def test_filters_unrelated_related_keywords(self):
+        self.assertFalse(
+            is_relevant_keyword("park avenue", {"long", "beach"}, {"alexan"})
+        )
+        self.assertTrue(
+            is_relevant_keyword(
+                "apartments for rent long beach",
+                {"long", "beach"},
+                {"alexan"},
+            )
+        )
 
 
 if __name__ == "__main__":

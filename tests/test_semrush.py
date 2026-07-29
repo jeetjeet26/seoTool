@@ -55,6 +55,8 @@ class SemrushReportTests(unittest.TestCase):
         ):
             self.assertEqual(client.get_organic_positions("example.com"), [])
             self.assertEqual(client.get_backlinks_overview("example.com"), {})
+        diagnostics = client.consume_diagnostics()
+        self.assertTrue(any("ERROR 50" in message for message in diagnostics))
 
     def test_parses_backlinks_overview(self):
         body = (
