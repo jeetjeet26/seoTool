@@ -54,8 +54,20 @@ if [ ! -s "${SF_HOME}/licence.txt" ]; then
   exit 1
 fi
 
-# Accept the EULA for headless operation (no GUI to click through).
-printf 'eula.accepted=15\n' > "${SF_HOME}/spider.config"
+# Accept the EULA for headless operation (no GUI to click through) and use
+# database storage mode so crawl data lives on disk instead of the Java heap
+# (memory mode exhausts the 1GB heap and aborts crawls on this instance).
+SF_DB_DIR="/tmp/sf-crawl-db"
+if [ -d /var/data ]; then
+  SF_DB_DIR="/var/data/sf-crawl-db"
+fi
+rm -rf "${SF_DB_DIR}"
+mkdir -p "${SF_DB_DIR}"
+{
+  printf 'eula.accepted=15\n'
+  printf 'storage.mode=DB\n'
+  printf 'storage.db_dir=%s\n' "${SF_DB_DIR}"
+} > "${SF_HOME}/spider.config"
 
 # Cap the Java heap below the instance's physical memory, otherwise Screaming
 # Frog refuses to start (default is 2GB on a 2GB instance).
