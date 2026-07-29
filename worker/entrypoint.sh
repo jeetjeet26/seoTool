@@ -18,6 +18,15 @@ if [ -n "${SCREAMING_FROG_LICENSE_B64:-}" ]; then
   chmod 600 "${SF_HOME}/licence.txt"
 fi
 
+# Optionally adopt an existing machine identity/lease so the licence server
+# renews an already-granted lease instead of allocating a new machine seat.
+if [ -n "${SCREAMING_FROG_MACHINE_ID:-}" ]; then
+  printf '%s' "${SCREAMING_FROG_MACHINE_ID}" > "${SF_HOME}/machine-id.txt"
+fi
+if [ -n "${SCREAMING_FROG_LEASE_B64:-}" ]; then
+  printf '%s' "${SCREAMING_FROG_LEASE_B64}" | base64 --decode > "${SF_HOME}/lease.json"
+fi
+
 if [ ! -s "${SF_HOME}/licence.txt" ]; then
   echo "Screaming Frog licence is missing. Set SCREAMING_FROG_LICENSE_B64." >&2
   exit 1
