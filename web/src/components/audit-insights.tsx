@@ -104,10 +104,10 @@ function SearchVisibility({ summary }: { summary: AuditSummary }) {
       {Object.entries(backlinks).map(([key, value]) => <article key={key}><span>{humanize(key)}</span><strong>{formatNumber(value)}</strong></article>)}
     </div>
     <div className="subsection">
-      <h3>Organic competitors</h3>
+      <h3>Compare domains</h3>
       {competitors.length
-        ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
-        : <EmptyState text="No competitor rows were returned. This can mean limited domain history or unavailable Semrush report access."/>}
+        ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Source</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.source === "provided" ? "Provided" : "Semrush"}</td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
+        : <EmptyState text="No competitor domains were provided and Semrush did not discover enough organic overlap for this audit."/>}
     </div>
   </section>;
 }

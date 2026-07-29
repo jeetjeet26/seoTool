@@ -63,7 +63,12 @@ class InsightRunner:
         try:
             result["semrush"] = self.semrush.get_domain_overview(domain)
             rankings = self.semrush.get_organic_positions(domain)
-            result["competitors"] = self.semrush.get_competitors(domain)
+            discovered_competitors = self.semrush.get_competitors(domain)
+            result["competitors"] = _merge_competitors(
+                self.semrush,
+                discovered_competitors,
+                job.options.get("competitor_domains") or [],
+            )
             result["backlinks"] = self.semrush.get_backlinks_overview(domain)
             for phrase in seed_phrases(job.location)[:3]:
                 related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
@@ -171,3 +176,48 @@ def _safe_error(service: str, exc: Exception) -> dict[str, str]:
         "service": service,
         "message": message[:500],
     }
+
+
+def _merge_competitors(
+    semrush: SemrushClient,
+    discovered: list[dict],
+    provided_domains: list[str],
+) -> list[dict]:
+    discovered_by_domain = {
+        _normalize_domain(item.get("domain", "")): item
+        for item in discovered
+        if item.get("domain")
+    }
+    results: list[dict] = []
+    provided = []
+    for raw_domain in provided_domains[:10]:
+        domain = _normalize_domain(str(raw_domain))
+        if not domain or domain in provided:
+            continue
+        provided.append(domain)
+        discovered_item = discovered_by_domain.get(domain, {})
+        overview = semrush.get_domain_overview(domain)
+        results.append(
+            {
+                "domain": domain,
+                "source": "provided",
+                "competition_level": discovered_item.get("competition_level", 0),
+                "common_keywords": discovered_item.get("common_keywords", 0),
+                "organic_keywords": overview.get("organic_keywords", 0),
+                "organic_traffic": overview.get("organic_traffic", 0),
+            }
+        )
+
+    results.extend(
+        {
+            **item,
+            "source": "semrush",
+        }
+        for item in discovered
+        if _normalize_domain(item.get("domain", "")) not in provided
+    )
+    return results
+
+
+def _normalize_domain(value: str) -> str:
+    return value.strip().lower().removeprefix("www.")

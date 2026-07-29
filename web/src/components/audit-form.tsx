@@ -18,6 +18,15 @@ export function AuditForm() {
           <label>Client name<input name="clientName" required autoComplete="organization" placeholder="Client or property name" /></label>
           <label>Website URL<input name="targetUrl" type="url" required placeholder="https://example.com" /></label>
           <div className="field-row"><label>City<input name="targetCity" required placeholder="Austin" /></label><label>State or region<input name="targetRegion" placeholder="Texas" maxLength={160} /></label></div>
+          <label>
+            Competitor domains <span className="label-hint">Optional · one per line · maximum 10</span>
+            <textarea
+              name="competitorDomains"
+              rows={4}
+              maxLength={2000}
+              placeholder={"competitor-one.com\ncompetitor-two.com"}
+            />
+          </label>
         </div>
       </div>
       <div className="form-section">

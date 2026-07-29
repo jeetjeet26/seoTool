@@ -18,6 +18,9 @@ export async function queueAudit(
   const targetUrl = String(formData.get("targetUrl") ?? "").trim();
   const targetCity = String(formData.get("targetCity") ?? "").trim();
   const targetRegion = String(formData.get("targetRegion") ?? "").trim();
+  const rawCompetitorDomains = String(
+    formData.get("competitorDomains") ?? "",
+  ).trim();
   const pageLimit = Number(formData.get("pageLimit"));
 
   if (!clientName || !targetUrl || !targetCity) {
@@ -25,13 +28,26 @@ export async function queueAudit(
   }
   let normalizedTargetUrl: string;
   let websiteUrl: string;
+  let targetDomain: string;
   try {
     const parsed = new URL(targetUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
     normalizedTargetUrl = parsed.toString();
     websiteUrl = parsed.origin;
+    targetDomain = normalizeDomain(parsed.hostname);
   } catch {
     return { error: "Enter a valid HTTP or HTTPS website URL." };
+  }
+  let competitorDomains: string[];
+  try {
+    competitorDomains = parseCompetitorDomains(
+      rawCompetitorDomains,
+      targetDomain,
+    );
+  } catch {
+    return {
+      error: "Enter up to 10 valid competitor domains, one per line.",
+    };
   }
   if (!Number.isInteger(pageLimit) || pageLimit < 1 || pageLimit > 1000) {
     return { error: "Page limit must be between 1 and 1,000." };
@@ -86,6 +102,7 @@ export async function queueAudit(
       page_limit: pageLimit,
       run_performance: formData.get("runPerformance") === "on",
       run_accessibility: formData.get("runAccessibility") === "on",
+      options: { competitor_domains: competitorDomains },
       status: "queued",
       current_stage: "queued",
       requested_by: claimsData.claims.sub,
@@ -98,4 +115,28 @@ export async function queueAudit(
   }
 
   redirect(`/audits/${data.id}`);
+}
+
+function parseCompetitorDomains(raw: string, targetDomain: string): string[] {
+  if (!raw) return [];
+  const values = raw
+    .split(/[\n,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (values.length > 10) throw new Error("Too many competitors");
+
+  const domains = values.map((value) => {
+    const parsed = new URL(
+      /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`,
+    );
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+    const domain = normalizeDomain(parsed.hostname);
+    if (!domain.includes(".") || domain === targetDomain) throw new Error();
+    return domain;
+  });
+  return [...new Set(domains)];
+}
+
+function normalizeDomain(value: string): string {
+  return value.trim().toLowerCase().replace(/^www\./, "");
 }

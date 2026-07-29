@@ -10,7 +10,11 @@ from worker.repository import AuditJob
 
 class FakeSemrush:
     def get_domain_overview(self, domain):
-        return {"domain": domain, "organic_keywords": 10}
+        return {
+            "domain": domain,
+            "organic_keywords": 20 if domain == "provided.com" else 10,
+            "organic_traffic": 40 if domain == "provided.com" else 5,
+        }
 
     def get_organic_positions(self, domain, limit=100):
         return [
@@ -108,7 +112,12 @@ class InsightRunnerTests(unittest.TestCase):
             writer.writeheader()
             writer.writerow({"Address": "https://example.com/pool.jpg", "Alt Text": ""})
 
-    def _run(self, page_count: int, page_limit: int = 1000) -> dict:
+    def _run(
+        self,
+        page_count: int,
+        page_limit: int = 1000,
+        options: dict | None = None,
+    ) -> dict:
         job = AuditJob(
             id="11111111-1111-4111-8111-111111111111",
             target_url="https://example.com/",
@@ -117,7 +126,7 @@ class InsightRunnerTests(unittest.TestCase):
             page_limit=page_limit,
             run_performance=True,
             run_accessibility=True,
-            options={},
+            options=options or {},
         )
         runner = InsightRunner(
             semrush=FakeSemrush(),
@@ -166,7 +175,19 @@ class InsightRunnerTests(unittest.TestCase):
         )
         self.assertEqual(ranked["source"], "ranking")
         self.assertEqual(result["competitors"][0]["domain"], "rival.com")
+        self.assertEqual(result["competitors"][0]["source"], "semrush")
         self.assertEqual(result["backlinks"]["authority_score"], 28)
+
+    def test_provided_competitors_are_enriched_and_prioritized(self):
+        result = self._run(
+            page_count=2,
+            options={"competitor_domains": ["provided.com"]},
+        )
+        competitor = result["competitors"][0]
+        self.assertEqual(competitor["domain"], "provided.com")
+        self.assertEqual(competitor["source"], "provided")
+        self.assertEqual(competitor["organic_keywords"], 20)
+        self.assertEqual(competitor["organic_traffic"], 40)
 
     def test_alt_text_and_page_experience(self):
         result = self._run(page_count=2)

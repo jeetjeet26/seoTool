@@ -42,6 +42,7 @@ export interface KeywordStrategyItem {
 
 export interface CompetitorMetric {
   domain: string;
+  source?: "provided" | "semrush";
   competition_level: number;
   common_keywords: number;
   organic_keywords: number;
