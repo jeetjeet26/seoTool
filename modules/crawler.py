@@ -89,8 +89,11 @@ class Crawler:
                     result.returncode,
                 )
             if fatal_lines:
+                crash_detail = self._read_crash_file(combined_output)
                 raise CrawlError(
-                    "Screaming Frog reported a fatal error: " + fatal_lines[0],
+                    "Screaming Frog reported a fatal error: "
+                    + fatal_lines[0]
+                    + (f"\nCrash file:\n{crash_detail}" if crash_detail else ""),
                     stdout,
                     stderr,
                     result.returncode,
@@ -109,6 +112,19 @@ class Crawler:
             raise CrawlError(
                 f"Screaming Frog executable not found at {self.sf_path}"
             )
+
+    @staticmethod
+    def _read_crash_file(sf_output: str) -> str:
+        """Return the tail of the crash file referenced in Screaming Frog output."""
+        match = re.search(r"Fatal Log File: (\S+)", sf_output)
+        if not match:
+            return ""
+        try:
+            with open(match.group(1), "r", errors="replace") as handle:
+                content = handle.read()
+        except OSError:
+            return ""
+        return content[-4000:]
 
     def verify_output(self, output_dir: str):
         """
