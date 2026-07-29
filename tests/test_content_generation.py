@@ -87,6 +87,23 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("Rooftop pool", user_prompt)
         self.assertIn("Never invent amenities", user_prompt)
 
+    def test_visible_body_copy_is_included_for_content_gap_analysis(self):
+        agent = FakeAgent()
+        generator = ContentGenerator(agent=agent)
+        results = generator.generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/services/",
+                    "body_text": "Current service copy for prospective clients.",
+                    "body_word_count": 6,
+                }
+            ]
+        )
+        _system, user_prompt = agent.prompts[0]
+        self.assertIn("Current service copy for prospective clients.", user_prompt)
+        self.assertIn("6 words", user_prompt)
+        self.assertEqual(results[0]["current_body_word_count"], 6)
+
     def test_one_off_returns_single_result(self):
         generator = ContentGenerator(agent=FakeAgent())
         result = generator.generate_one_off(

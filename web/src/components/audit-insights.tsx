@@ -140,7 +140,7 @@ function OnPageRecommendations({ recommendations }: { recommendations: ContentRe
   return <section className="card report-section">
     <div className="section-title"><div><h2>On-page content recommendations</h2><p>{items.length} pages with proposed copy improvements.</p></div></div>
     {items.length
-      ? <div className="long-form-recommendations">{items.map((item) => <details key={item.url}><summary>{stripProtocol(item.url)}</summary><p>{item.proposed_content}</p></details>)}</div>
+      ? <div className="long-form-recommendations">{items.map((item) => <details key={item.url}><summary>{stripProtocol(item.url)}</summary><small>{formatNumber(item.current_body_word_count)} current body words</small>{item.rationale && <p><strong>Why:</strong> {item.rationale}</p>}<p><strong>Recommended copy:</strong> {item.proposed_content}</p></details>)}</div>
       : <EmptyState text="No on-page copy changes were proposed."/>}
   </section>;
 }

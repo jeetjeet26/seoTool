@@ -145,6 +145,20 @@ class InsightRunnerTests(unittest.TestCase):
                     "modules.site_inventory.fetch_sitemap_urls",
                     return_value=["https://example.com/page-0/"],
                 ),
+                patch(
+                    "worker.insights.fetch_body_copy_for_pages",
+                    side_effect=lambda urls: (
+                        {
+                            url: {
+                                "url": url,
+                                "body_text": "Current visible page copy.",
+                                "body_word_count": 4,
+                            }
+                            for url in urls
+                        },
+                        [],
+                    ),
+                ),
             ):
                 return runner.run(job, directory)
 

@@ -16,6 +16,8 @@ export interface ContentRecommendation {
   proposed_h1?: string;
   proposed_meta_description?: string;
   proposed_content?: string;
+  rationale?: string;
+  current_body_word_count?: number;
   requires_human_review?: boolean;
 }
 

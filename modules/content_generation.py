@@ -64,8 +64,9 @@ class ContentGenerator:
     ) -> list[dict]:
         prompt = self._chunk_prompt(chunk, mode, client_context)
         system_prompt = (
-            "You are an expert Real Estate SEO copywriter. "
-            "Your tone is luxury, welcoming, and professional.\n"
+            "You are an expert SEO copywriter. Match the site's industry, "
+            "audience, evidence, and existing brand voice. When writing about "
+            "housing, apply these Fair Housing safeguards:\n"
             f"{self.agent.FAIR_HOUSING_GUIDELINES}"
         )
 
@@ -93,12 +94,16 @@ class ContentGenerator:
         lines = []
         for position, page in enumerate(chunk):
             keywords = ", ".join(page.get("keywords") or [])
+            body_text = _clean(page.get("body_text"))
+            body_word_count = int(page.get("body_word_count") or 0)
             lines.append(
                 f"{position + 1}. URL: {page.get('url', '')}\n"
                 f"   Target keywords: {keywords or 'infer from URL'}\n"
                 f"   Current title: {page.get('title') or 'None'}\n"
                 f"   Current meta description: {page.get('meta_description') or 'None'}\n"
-                f"   Current H1: {page.get('h1') or 'None'}"
+                f"   Current H1: {page.get('h1') or 'None'}\n"
+                f"   Current visible body copy ({body_word_count} words): "
+                f"{body_text or 'Unavailable'}"
             )
         pages_text = "\n".join(lines)
 
@@ -120,8 +125,12 @@ class ContentGenerator:
                 "These pages belong to a live website. Propose an improved title, "
                 "meta description, and H1 for every page, weaving in the target "
                 "keywords while staying truthful to the current content. "
-                "Include a short introductory paragraph only when the current "
-                "copy clearly fails to target the keywords."
+                "Analyze the supplied visible body copy for search intent, topical "
+                "depth, clarity, and keyword alignment. Include a specific 2-3 "
+                "sentence replacement or addition in the content field when copy "
+                "is thin, generic, missing, or fails to serve the target query. "
+                "Return an empty content field only when the current body copy "
+                "already serves the target query well."
             )
 
         return f"""{task}
@@ -154,6 +163,7 @@ Return ONLY a JSON array. One object per page with keys:
             "current_title": _clean(page.get("title")),
             "current_meta_description": _clean(page.get("meta_description")),
             "current_h1": _clean(page.get("h1")),
+            "current_body_word_count": int(page.get("body_word_count") or 0),
             "proposed_title": proposed_title,
             "proposed_meta_description": proposed_description,
             "proposed_h1": _clean(entry.get("h1")),

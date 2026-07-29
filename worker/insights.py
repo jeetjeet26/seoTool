@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
 from modules.keyword_strategy import build_keyword_strategy, seed_phrases
+from modules.page_content import fetch_body_copy_for_pages
 from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
 from modules.site_inventory import build_site_inventory
@@ -45,6 +46,7 @@ class InsightRunner:
             "keyword_metrics": {},
             "keyword_strategy": [],
             "site_inventory": {},
+            "body_copy_coverage": {},
             "content_recommendations": [],
             "alt_text_recommendations": [],
             "page_experience": [],
@@ -108,6 +110,28 @@ class InsightRunner:
                 keywords_by_page[assigned].append(candidate["keyword"])
         default_keywords = [candidate["keyword"] for candidate in keywords[:3]]
 
+        selected_pages = pages[:MAX_GENERATION_PAGES]
+        body_copy, body_copy_errors = fetch_body_copy_for_pages(
+            [page.url for page in selected_pages]
+        )
+        result["body_copy_coverage"] = {
+            "attempted": len(selected_pages),
+            "extracted": sum(
+                1 for item in body_copy.values() if item.get("body_text")
+            ),
+            "failed": len(body_copy_errors),
+        }
+        if body_copy_errors:
+            result["enrichment_errors"].append(
+                {
+                    "service": "content_fetch",
+                    "message": (
+                        f"Visible body copy could not be extracted from "
+                        f"{len(body_copy_errors)} of {len(selected_pages)} pages."
+                    ),
+                }
+            )
+
         generation_pages = [
             {
                 "url": page.url,
@@ -115,8 +139,12 @@ class InsightRunner:
                 "meta_description": page.meta_description,
                 "h1": page.h1,
                 "keywords": keywords_by_page.get(page.url) or default_keywords,
+                "body_text": body_copy.get(page.url, {}).get("body_text", ""),
+                "body_word_count": body_copy.get(page.url, {}).get(
+                    "body_word_count", 0
+                ),
             }
-            for page in pages[:MAX_GENERATION_PAGES]
+            for page in selected_pages
         ]
         if generation_pages:
             try:
