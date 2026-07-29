@@ -1,0 +1,83 @@
+import unittest
+from unittest.mock import patch
+
+from modules.semrush import SemrushClient
+
+
+class FakeResponse:
+    def __init__(self, text: str):
+        self.text = text
+
+    def raise_for_status(self):
+        return None
+
+
+def make_client() -> SemrushClient:
+    with patch("modules.semrush.Config") as config:
+        config.SEMRUSH_API_KEY = "test-key"
+        client = SemrushClient.__new__(SemrushClient)
+        client.api_key = "test-key"
+    return client
+
+
+class SemrushReportTests(unittest.TestCase):
+    def test_parses_organic_positions(self):
+        body = (
+            "Keyword;Position;Search Volume;CPC;Competition;Keyword Difficulty;Url;Traffic (%)\n"
+            "apartments long beach;7;720;1.20;0.45;38;https://example.com/;12.5\n"
+        )
+        client = make_client()
+        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+            rows = client.get_organic_positions("example.com")
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["keyword"], "apartments long beach")
+        self.assertEqual(rows[0]["position"], 7)
+        self.assertEqual(rows[0]["volume"], 720)
+        self.assertEqual(rows[0]["landing_page"], "https://example.com/")
+
+    def test_skips_malformed_rows(self):
+        body = (
+            "Keyword;Position;Search Volume;CPC;Competition;Keyword Difficulty;Url;Traffic (%)\n"
+            "broken row without separators\n"
+            "good keyword;3;100;0.5;0.2;20;https://example.com/a;1\n"
+        )
+        client = make_client()
+        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+            rows = client.get_organic_positions("example.com")
+        self.assertEqual([row["keyword"] for row in rows], ["good keyword"])
+
+    def test_error_body_returns_empty(self):
+        client = make_client()
+        with patch(
+            "modules.semrush.requests.get",
+            return_value=FakeResponse("ERROR 50 :: NOTHING FOUND"),
+        ):
+            self.assertEqual(client.get_organic_positions("example.com"), [])
+            self.assertEqual(client.get_backlinks_overview("example.com"), {})
+
+    def test_parses_backlinks_overview(self):
+        body = (
+            "ascore;total;domains_num;urls_num;ips_num\n"
+            "34;1200;85;400;60\n"
+        )
+        client = make_client()
+        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+            overview = client.get_backlinks_overview("example.com")
+        self.assertEqual(overview["authority_score"], 34)
+        self.assertEqual(overview["referring_domains"], 85)
+
+    def test_parses_competitors(self):
+        body = (
+            "Domain;Competitor Relevance;Common Keywords;Organic Keywords;Organic Traffic\n"
+            "rival.com;0.31;44;900;15000\n"
+        )
+        client = make_client()
+        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+            rows = client.get_competitors("example.com")
+        self.assertEqual(rows[0]["domain"], "rival.com")
+        self.assertEqual(rows[0]["common_keywords"], 44)
+
+
+if __name__ == "__main__":
+    unittest.main()

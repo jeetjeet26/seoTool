@@ -107,6 +107,142 @@ class SemrushClient:
         
         return results
 
+    # ------------------------------------------------------------------
+    # Discovery reports used by keyword strategy and technical correlation
+    # ------------------------------------------------------------------
+
+    def _report_rows(self, params: dict) -> list[dict]:
+        """Run a Semrush analytics report and return rows keyed by header name."""
+        if not self.api_key:
+            return []
+        request_params = {"key": self.api_key, "database": "us", **params}
+        try:
+            response = requests.get(self.BASE_URL, params=request_params, timeout=60)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching Semrush report {params.get('type')}: {e}")
+            return []
+
+        text = response.text.strip()
+        if not text or text.startswith("ERROR"):
+            return []
+        lines = text.split("\n")
+        if len(lines) < 2:
+            return []
+        header = [column.strip() for column in lines[0].split(";")]
+        rows = []
+        for line in lines[1:]:
+            values = line.split(";")
+            if len(values) != len(header):
+                continue
+            rows.append(dict(zip(header, (value.strip() for value in values))))
+        return rows
+
+    def get_organic_positions(self, domain: str, limit: int = 100) -> list[dict]:
+        """Keywords the domain currently ranks for, with per-URL detail."""
+        rows = self._report_rows(
+            {
+                "type": "domain_organic",
+                "domain": domain,
+                "display_limit": limit,
+                "export_columns": "Ph,Po,Nq,Cp,Co,Kd,Ur,Tr",
+            }
+        )
+        return [
+            {
+                "keyword": row.get("Keyword", ""),
+                "position": _to_int(row.get("Position")),
+                "volume": _to_int(row.get("Search Volume")),
+                "cpc": _to_float(row.get("CPC")),
+                "competition": _to_float(row.get("Competition")),
+                "difficulty": _to_float(row.get("Keyword Difficulty")),
+                "landing_page": row.get("Url", ""),
+                "traffic_percent": _to_float(row.get("Traffic (%)")),
+            }
+            for row in rows
+            if row.get("Keyword")
+        ]
+
+    def get_competitors(self, domain: str, limit: int = 10) -> list[dict]:
+        """Organic competitors ordered by competition level."""
+        rows = self._report_rows(
+            {
+                "type": "domain_organic_organic",
+                "domain": domain,
+                "display_limit": limit,
+                "export_columns": "Dn,Cr,Np,Or,Ot",
+            }
+        )
+        return [
+            {
+                "domain": row.get("Domain", ""),
+                "competition_level": _to_float(row.get("Competitor Relevance")),
+                "common_keywords": _to_int(row.get("Common Keywords")),
+                "organic_keywords": _to_int(row.get("Organic Keywords")),
+                "organic_traffic": _to_int(row.get("Organic Traffic")),
+            }
+            for row in rows
+            if row.get("Domain")
+        ]
+
+    def get_backlinks_overview(self, domain: str) -> dict:
+        """Backlink authority totals for the root domain."""
+        rows = self._report_rows(
+            {
+                "type": "backlinks_overview",
+                "target": domain,
+                "target_type": "root_domain",
+                "export_columns": "ascore,total,domains_num,urls_num,ips_num",
+            }
+        )
+        if not rows:
+            return {}
+        row = rows[0]
+        return {
+            "authority_score": _to_int(row.get("ascore")),
+            "total_backlinks": _to_int(row.get("total")),
+            "referring_domains": _to_int(row.get("domains_num")),
+            "referring_urls": _to_int(row.get("urls_num")),
+            "referring_ips": _to_int(row.get("ips_num")),
+        }
+
+    def get_keyword_ideas(self, phrase: str, limit: int = 40) -> list[dict]:
+        """Related keyword ideas for a seed phrase (phrase_related report)."""
+        rows = self._report_rows(
+            {
+                "type": "phrase_related",
+                "phrase": phrase,
+                "display_limit": limit,
+                "export_columns": "Ph,Nq,Cp,Co,Kd",
+            }
+        )
+        return [
+            {
+                "keyword": row.get("Keyword", ""),
+                "volume": _to_int(row.get("Search Volume")),
+                "cpc": _to_float(row.get("CPC")),
+                "competition": _to_float(row.get("Competition")),
+                "difficulty": _to_float(row.get("Keyword Difficulty")),
+            }
+            for row in rows
+            if row.get("Keyword")
+        ]
+
+
+def _to_int(value) -> int:
+    try:
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _to_float(value) -> float:
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 if __name__ == "__main__":
     # Test
     s = SemrushClient()

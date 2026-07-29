@@ -25,10 +25,11 @@ class ExportTests(unittest.TestCase):
         summary = {
             "finding_count": 1,
             "target_url": "https://example.com/",
+            "target_location": "Dallas, Texas",
             "content_recommendations": [
                 {
                     "url": "https://example.com/",
-                    "title": "Old",
+                    "current_title": "Old",
                     "proposed_title": "New",
                     "requires_human_review": True,
                 }
@@ -54,11 +55,19 @@ class ExportTests(unittest.TestCase):
             workbook = load_workbook(xlsx_path)
 
         self.assertEqual(rows[1][3], "https://example.com/")
-        self.assertIn("Technical Findings", workbook.sheetnames)
-        self.assertIn("Content Recommendations", workbook.sheetnames)
-        self.assertIn("Performance & Accessibility", workbook.sheetnames)
+        self.assertIn("Introduction", workbook.sheetnames)
+        self.assertIn("Title Tags", workbook.sheetnames)
+        self.assertIn("Technical SEO", workbook.sheetnames)
+        self.assertIn("Page Speed", workbook.sheetnames)
+        self.assertIn("Glossary", workbook.sheetnames)
+        # Proposed title lands in the Title Tags sheet.
+        titles = workbook["Title Tags"]
+        self.assertEqual(titles.cell(row=6, column=5).value, "New")
+        # Technical rows keep occurrence counts and hyperlink the example URL.
+        technical = workbook["Technical SEO"]
+        self.assertEqual(technical.cell(row=6, column=4).value, 1)
         self.assertEqual(
-            workbook["Technical Findings"]["D2"].hyperlink.target,
+            technical.cell(row=6, column=5).hyperlink.target,
             "https://example.com/",
         )
 

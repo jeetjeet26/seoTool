@@ -8,12 +8,18 @@ import type { AuditSummary, PageExperience } from "@/lib/data/types";
 
 export default async function ReportPage({ params }: { params: Promise<{ auditId: string }> }) {
   const { auditId } = await params;
-  const [audit, findings, audits] = await Promise.all([
+  const [audit, findings, audits, toolRuns] = await Promise.all([
     data.getAudit(auditId),
     data.getFindings(auditId),
     data.getAudits(),
+    data.getToolRuns(),
   ]);
   if (!audit) notFound();
+  const clientToolRuns = toolRuns.filter(
+    (run) =>
+      run.status === "completed" &&
+      (run.auditId === auditId || run.clientId === audit.clientId),
+  );
   const summary = audit.summary ?? {};
   const categoryCards = buildCategoryCards(summary);
   const recommendations = summary.content_recommendations ?? [];
@@ -43,6 +49,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
       <section className="card"><div className="section-title"><div><h2>Search visibility</h2><p>Semrush domain and location keyword signals.</p></div></div><div className="recommendations">{Object.entries(summary.semrush ?? {}).slice(0, 5).map(([key, value]) => <article key={key}><span>{key.replaceAll("_", " ")}</span><strong>{String(value)}</strong></article>)}{Object.keys(summary.semrush ?? {}).length === 0 && <article><span>Semrush</span><strong>Metrics will appear after analysis.</strong></article>}</div></section>
       <section className="card"><div className="section-title"><div><h2>Fair Housing compliance</h2><p>AI-generated copy remains subject to human approval.</p></div></div><div className="recommendations"><article><span>Review status</span><strong>Human review required before publishing</strong><p>Recommendations are generated with Fair Housing language safeguards. Confirm accuracy, accessibility, brand voice, and legal suitability before implementation.</p></article></div></section>
     </div>
+    {clientToolRuns.length > 0 && <section className="card report-section"><div className="section-title"><div><h2>Tool outputs for this client</h2><p>Approved keyword, metadata, schema, and llms.txt work from the tools workspace.</p></div></div><div className="recommendations">{clientToolRuns.slice(0, 6).map((run) => <article key={run.id}><span>{run.toolType.replaceAll("_", " ")}</span><strong><Link className="text-link" href={`/tools/runs/${run.id}`}>{run.name}</Link></strong><p>Completed {formatDate(run.updatedAt, "long")} — open the run to review approved items and exports.</p></article>)}</div></section>}
     <section className="card report-section"><div className="section-title"><div><h2>Audit history</h2><p>Score movement across completed scans.</p></div></div><div className="history">{(history.length ? history : [audit]).map((item, index, list) => <span key={item.id} className={index === list.length - 1 ? "active" : ""} style={{height:`${Math.max(30, item.score ?? 0)}%`}}><b>{item.score ?? "—"}</b><small>{formatDate(item.createdAt, "short")}</small></span>)}</div></section>
   </>;
 }

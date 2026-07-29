@@ -22,4 +22,19 @@ export const emptyData: DataProvider = {
   async getAuditEvents() {
     return [];
   },
+  async getToolRuns() {
+    return [];
+  },
+  async getToolRun() {
+    return undefined;
+  },
+  async getToolRunItems() {
+    return [];
+  },
+  async getToolArtifacts() {
+    return [];
+  },
+  async getToolRunsForAudit() {
+    return [];
+  },
 };

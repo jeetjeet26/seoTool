@@ -6,6 +6,7 @@ const nav = [
   { href: "/dashboard", label: "Dashboard", icon: "home" as const },
   { href: "/clients", label: "Clients", icon: "users" as const },
   { href: "/audits", label: "Audits", icon: "scan" as const },
+  { href: "/tools", label: "Tools", icon: "wrench" as const },
 ];
 
 export function AppShell({

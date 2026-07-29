@@ -1,20 +1,20 @@
-"""Generate client-downloadable CSV and Excel artifacts from structured results."""
+"""Generate client-downloadable CSV and Excel artifacts from structured results.
+
+Thin orchestration over the named export profiles in
+:mod:`worker.export_profiles`.
+"""
 
 from __future__ import annotations
 
-import csv
-import json
+from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-
 from modules.models import Finding
-
-
-HEADER_FILL = PatternFill("solid", fgColor="176B52")
-HEADER_FONT = Font(color="FFFFFF", bold=True)
+from worker.export_profiles import (
+    build_client_workbook,
+    internal_findings_csv,
+)
 
 
 def generate_report_exports(
@@ -28,167 +28,73 @@ def generate_report_exports(
     directory.mkdir(parents=True, exist_ok=True)
 
     csv_path = directory / f"seo-audit-{audit_id}.csv"
-    with csv_path.open("w", newline="", encoding="utf-8-sig") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(
-            [
-                "Severity",
-                "Category",
-                "Issue Type",
-                "Page URL",
-                "Resource URL",
-                "Evidence",
-                "Recommendation",
-                "Source File",
-            ]
-        )
-        for finding in rows:
-            writer.writerow(
-                [
-                    finding.severity.value,
-                    finding.category,
-                    finding.issue_type,
-                    finding.page_url,
-                    finding.resource_url,
-                    finding.evidence,
-                    finding.recommendation,
-                    finding.source_file,
-                ]
-            )
+    csv_path.write_text(internal_findings_csv(rows), encoding="utf-8-sig")
 
     excel_path = directory / f"seo-audit-{audit_id}.xlsx"
-    workbook = Workbook()
-    summary_sheet = workbook.active
-    summary_sheet.title = "Executive Summary"
-    summary_sheet.append(["Metric", "Value"])
-    _style_header(summary_sheet)
-    for key in (
-        "finding_count",
-        "target_url",
-        "target_location",
-        "page_limit",
-        "artifact_count",
-    ):
-        if key in summary:
-            summary_sheet.append([key.replace("_", " ").title(), summary[key]])
-    for key in ("severity_counts", "category_counts", "semrush", "keyword_metrics"):
-        if summary.get(key):
-            summary_sheet.append(
-                [key.replace("_", " ").title(), json.dumps(summary[key], default=str)]
-            )
-    summary_sheet.column_dimensions["A"].width = 28
-    summary_sheet.column_dimensions["B"].width = 80
-
-    findings_sheet = workbook.create_sheet("Technical Findings")
-    findings_sheet.append(
-        [
-            "Severity",
-            "Category",
-            "Issue Type",
-            "Page URL",
-            "Resource URL",
-            "Evidence",
-            "Recommendation",
-            "Source File",
-        ]
+    workbook = build_client_workbook(
+        property_name=str(summary.get("target_location") or summary.get("target_url") or "SEO Audit"),
+        keywords=summary.get("keyword_strategy") or [],
+        metadata_items=summary.get("content_recommendations") or [],
+        onpage_items=[
+            item
+            for item in summary.get("content_recommendations") or []
+            if item.get("proposed_content")
+        ],
+        alt_text_items=summary.get("alt_text_recommendations") or [],
+        technical_rows=technical_rows_from_findings(rows),
+        page_experience=summary.get("page_experience") or [],
+        recap_lines=_recap_lines(summary),
     )
-    _style_header(findings_sheet)
-    for finding in rows:
-        findings_sheet.append(
-            [
-                finding.severity.value,
-                finding.category,
-                finding.issue_type,
-                finding.page_url,
-                finding.resource_url,
-                finding.evidence,
-                finding.recommendation,
-                finding.source_file,
-            ]
-        )
-        row = findings_sheet.max_row
-        for column in (4, 5):
-            cell = findings_sheet.cell(row=row, column=column)
-            if cell.value:
-                cell.hyperlink = str(cell.value)
-                cell.style = "Hyperlink"
-    _format_tabular_sheet(findings_sheet)
-
-    recommendations = summary.get("content_recommendations") or []
-    if recommendations:
-        content_sheet = workbook.create_sheet("Content Recommendations")
-        headers = [
-            "URL",
-            "Current Title",
-            "Proposed Title",
-            "Current H1",
-            "Proposed H1",
-            "Current Meta Description",
-            "Proposed Meta Description",
-            "Human Review Required",
-        ]
-        content_sheet.append(headers)
-        _style_header(content_sheet)
-        for item in recommendations:
-            content_sheet.append(
-                [
-                    item.get("url"),
-                    item.get("title"),
-                    item.get("proposed_title"),
-                    item.get("h1"),
-                    item.get("proposed_h1"),
-                    item.get("meta_description"),
-                    item.get("proposed_meta_description"),
-                    item.get("requires_human_review", True),
-                ]
-            )
-        _format_tabular_sheet(content_sheet)
-
-    experiences = summary.get("page_experience") or []
-    if experiences:
-        experience_sheet = workbook.create_sheet("Performance & Accessibility")
-        experience_sheet.append(
-            [
-                "URL",
-                "Performance Score",
-                "Accessibility Score",
-                "Metrics",
-                "Accessibility Issues",
-            ]
-        )
-        _style_header(experience_sheet)
-        for item in experiences:
-            experience_sheet.append(
-                [
-                    item.get("url"),
-                    item.get("performance_score"),
-                    item.get("accessibility_score"),
-                    json.dumps(item.get("metrics", {}), default=str),
-                    json.dumps(item.get("accessibility_issues", []), default=str),
-                ]
-            )
-        _format_tabular_sheet(experience_sheet)
-
     workbook.save(excel_path)
     return [csv_path, excel_path]
 
 
-def _style_header(sheet) -> None:
-    for cell in sheet[1]:
-        cell.fill = HEADER_FILL
-        cell.font = HEADER_FONT
-        cell.alignment = Alignment(vertical="center")
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = sheet.dimensions
+def technical_rows_from_findings(findings: list[Finding]) -> list[dict]:
+    """Group findings into the workbook's technical contract: one row per
+    issue type with occurrence counts and an example location."""
 
+    counts: Counter[tuple[str, str]] = Counter()
+    examples: dict[tuple[str, str], Finding] = {}
+    for finding in findings:
+        key = (finding.category, finding.issue_type)
+        counts[key] += 1
+        examples.setdefault(key, finding)
 
-def _format_tabular_sheet(sheet) -> None:
-    for column in sheet.columns:
-        letter = column[0].column_letter
-        sheet.column_dimensions[letter].width = min(
-            60,
-            max(14, max(len(str(cell.value or "")) for cell in column) + 2),
+    rows = []
+    for (category, issue_type), count in sorted(
+        counts.items(), key=lambda entry: (-entry[1], entry[0])
+    ):
+        example = examples[(category, issue_type)]
+        rows.append(
+            {
+                "category": category,
+                "issue": issue_type.replace("_", " ").title(),
+                "description": example.recommendation
+                or f"{issue_type.replace('_', ' ').title()} detected during the crawl.",
+                "occurrences": count,
+                "example_url": example.page_url or example.resource_url or "",
+                "recommendation": example.recommendation,
+            }
         )
-    for row in sheet.iter_rows(min_row=2):
-        for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    return rows
+
+
+def _recap_lines(summary: dict[str, Any]) -> list[str]:
+    lines = []
+    if summary.get("pages_scanned"):
+        lines.append(f"Pages crawled: {summary['pages_scanned']}")
+    if summary.get("finding_count") is not None:
+        lines.append(f"Technical findings identified: {summary['finding_count']}")
+    if summary.get("keyword_strategy"):
+        lines.append(f"Keywords researched: {len(summary['keyword_strategy'])}")
+    if summary.get("content_recommendations"):
+        lines.append(
+            f"Pages with metadata recommendations: {len(summary['content_recommendations'])}"
+        )
+    if summary.get("alt_text_recommendations"):
+        lines.append(
+            f"Images with proposed alt text: {len(summary['alt_text_recommendations'])}"
+        )
+    if summary.get("score") is not None:
+        lines.append(f"Site health score: {summary['score']}/100")
+    return lines

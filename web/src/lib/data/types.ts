@@ -100,6 +100,62 @@ export interface AuditEvent {
   createdAt: string;
 }
 
+export type ToolType =
+  | "keyword_research"
+  | "bulk_metadata"
+  | "one_off_metadata"
+  | "schema_generation"
+  | "llms_txt"
+  | "local_audit"
+  | "listing_optimization";
+
+export type ToolRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type ToolItemReview = "unreviewed" | "approved" | "rejected";
+
+export interface ToolRun {
+  id: string;
+  clientId: string;
+  clientName: string;
+  auditId?: string;
+  toolType: ToolType;
+  name: string;
+  status: ToolRunStatus;
+  currentStage: string;
+  progress: number;
+  options: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  failureMessage?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ToolRunItem {
+  id: string;
+  runId: string;
+  itemType: string;
+  stableKey: string;
+  position: number;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  editedOutput?: Record<string, unknown>;
+  reviewStatus: ToolItemReview;
+}
+
+export interface ToolArtifact {
+  id: string;
+  runId: string;
+  kind: string;
+  objectPath: string;
+  contentType?: string;
+  byteSize?: number;
+}
+
 export interface DataProvider {
   getClients(): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
@@ -108,4 +164,9 @@ export interface DataProvider {
   getFindings(auditId: string): Promise<Finding[]>;
   getTasks(auditId: string): Promise<Task[]>;
   getAuditEvents(auditId: string): Promise<AuditEvent[]>;
+  getToolRuns(): Promise<ToolRun[]>;
+  getToolRun(id: string): Promise<ToolRun | undefined>;
+  getToolRunItems(runId: string): Promise<ToolRunItem[]>;
+  getToolArtifacts(runId: string): Promise<ToolArtifact[]>;
+  getToolRunsForAudit(auditId: string): Promise<ToolRun[]>;
 }

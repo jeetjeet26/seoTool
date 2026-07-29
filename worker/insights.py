@@ -1,16 +1,26 @@
-"""Optional Semrush, AI, performance, and accessibility enrichment."""
+"""Semrush, AI, performance, and accessibility enrichment for audits.
+
+Uses the full crawl inventory (bounded by the audit's page limit) instead of a
+fixed handful of pages, and evidence-backed keyword strategy instead of
+hard-coded phrases.
+"""
 
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from modules.agent import SEOAgent
+from modules.content_generation import ContentGenerator
+from modules.keyword_strategy import build_keyword_strategy, seed_phrases
 from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
-from modules.url_safety import UnsafeAuditUrl, validate_public_audit_url
+from modules.site_inventory import build_site_inventory
 from worker.repository import AuditJob
+
+MAX_GENERATION_PAGES = 200
+MAX_ALT_TEXT_IMAGES = 100
+MAX_PAGESPEED_PAGES = 3
 
 
 class InsightRunner:
@@ -19,66 +29,111 @@ class InsightRunner:
         semrush: SemrushClient | None = None,
         agent: SEOAgent | None = None,
         pagespeed: PageSpeedClient | None = None,
+        generator: ContentGenerator | None = None,
     ):
         self.semrush = semrush or SemrushClient()
         self.agent = agent or SEOAgent()
         self.pagespeed = pagespeed or PageSpeedClient()
+        self.generator = generator or ContentGenerator(agent=self.agent)
 
     def run(self, job: AuditJob, crawl_dir: Path) -> dict:
-        pages = _load_representative_pages(crawl_dir / "internal_all.csv", limit=5)
-        keywords = _target_keywords(job.location)
         result = {
             "semrush": {},
+            "competitors": [],
+            "backlinks": {},
             "keyword_metrics": {},
+            "keyword_strategy": [],
+            "site_inventory": {},
             "content_recommendations": [],
+            "alt_text_recommendations": [],
             "page_experience": [],
             "enrichment_errors": [],
         }
 
+        inventory = build_site_inventory(
+            crawl_dir, job.target_url, page_limit=job.page_limit
+        )
+        result["site_inventory"] = inventory.summary()
+        pages = inventory.pages
+
+        domain = urlsplit(job.target_url).hostname or ""
+        rankings: list[dict] = []
+        related: list[dict] = []
         try:
-            domain = urlsplit(job.target_url).hostname or ""
             result["semrush"] = self.semrush.get_domain_overview(domain)
-            result["keyword_metrics"] = self.semrush.get_keyword_data(keywords)
-        except Exception as exc:
+            rankings = self.semrush.get_organic_positions(domain)
+            result["competitors"] = self.semrush.get_competitors(domain)
+            result["backlinks"] = self.semrush.get_backlinks_overview(domain)
+            for phrase in seed_phrases(job.location)[:3]:
+                related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
+        except Exception as exc:  # noqa: BLE001
             result["enrichment_errors"].append(_safe_error("semrush", exc))
 
-        for page in pages:
+        keywords = build_keyword_strategy(
+            location=job.location,
+            target_url=job.target_url,
+            rankings=rankings,
+            related=related,
+            page_urls=[page.url for page in pages],
+            max_keywords=40,
+        )
+        result["keyword_strategy"] = keywords
+        result["keyword_metrics"] = {
+            candidate["keyword"]: {
+                "volume": candidate["volume"],
+                "kd": candidate["difficulty"],
+            }
+            for candidate in keywords[:10]
+        }
+
+        keywords_by_page: dict[str, list[str]] = {}
+        for candidate in keywords:
+            assigned = candidate.get("assigned_page") or job.target_url
+            keywords_by_page.setdefault(assigned, [])
+            if len(keywords_by_page[assigned]) < 3:
+                keywords_by_page[assigned].append(candidate["keyword"])
+        default_keywords = [candidate["keyword"] for candidate in keywords[:3]]
+
+        generation_pages = [
+            {
+                "url": page.url,
+                "title": page.title,
+                "meta_description": page.meta_description,
+                "h1": page.h1,
+                "keywords": keywords_by_page.get(page.url) or default_keywords,
+            }
+            for page in pages[:MAX_GENERATION_PAGES]
+        ]
+        if generation_pages:
             try:
-                metadata = self.agent.optimize_metadata(
-                    {
-                        "url": page["url"],
-                        "current_title": page["title"],
-                        "keywords": keywords,
-                    }
+                result["content_recommendations"] = [
+                    {**item, "requires_human_review": True}
+                    for item in self.generator.generate_bulk_metadata(
+                        generation_pages, mode="existing"
+                    )
+                ]
+            except Exception as exc:  # noqa: BLE001
+                result["enrichment_errors"].append(_safe_error("anthropic", exc))
+
+        images = [
+            image.to_dict()
+            for image in inventory.images_missing_alt[:MAX_ALT_TEXT_IMAGES]
+        ]
+        if images:
+            try:
+                result["alt_text_recommendations"] = self.generator.generate_alt_text(
+                    images
                 )
-                onpage = self.agent.optimize_onpage(
-                    {
-                        "url": page["url"],
-                        "current_h1": page["h1"],
-                        "current_content": page["meta_description"],
-                        "target_keyword": keywords[0],
-                    }
-                )
-                result["content_recommendations"].append(
-                    {
-                        **page,
-                        "target_keywords": keywords,
-                        "proposed_title": metadata.get("title", ""),
-                        "proposed_meta_description": metadata.get(
-                            "meta_description", ""
-                        ),
-                        "proposed_h1": onpage.get("h1", ""),
-                        "proposed_content": onpage.get("content", ""),
-                        "requires_human_review": True,
-                    }
-                )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 result["enrichment_errors"].append(_safe_error("anthropic", exc))
 
         if job.run_performance or job.run_accessibility:
-            for page in pages[:3] or [{"url": job.target_url}]:
+            targets = [page.url for page in pages[:MAX_PAGESPEED_PAGES]] or [
+                job.target_url
+            ]
+            for url in targets:
                 try:
-                    page_result = self.pagespeed.analyze_url(page["url"])
+                    page_result = self.pagespeed.analyze_url(url)
                     if not job.run_performance:
                         page_result.pop("performance_score", None)
                         page_result.pop("metrics", None)
@@ -86,54 +141,10 @@ class InsightRunner:
                         page_result.pop("accessibility_score", None)
                         page_result.pop("accessibility_issues", None)
                     result["page_experience"].append(page_result)
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001
                     result["enrichment_errors"].append(_safe_error("pagespeed", exc))
 
         return result
-
-
-def _target_keywords(location: str) -> list[str]:
-    return [
-        f"apartments in {location}",
-        f"pet friendly apartments {location}",
-        f"luxury apartments {location}",
-        f"studio apartments {location}",
-    ]
-
-
-def _load_representative_pages(path: Path, limit: int) -> list[dict[str, str]]:
-    if not path.is_file():
-        return []
-
-    pages = []
-    with path.open("r", encoding="utf-8-sig", newline="") as stream:
-        for row in csv.DictReader(stream):
-            url = (row.get("Address") or "").strip()
-            content_type = (row.get("Content Type") or "").lower()
-            status = str(row.get("Status Code") or "").strip()
-            if not url or status not in {"", "200", "200.0"}:
-                continue
-            if content_type and "html" not in content_type:
-                continue
-            try:
-                url = validate_public_audit_url(url)
-            except UnsafeAuditUrl:
-                continue
-            pages.append(
-                {
-                    "url": url,
-                    "title": _clean(row.get("Title 1")),
-                    "h1": _clean(row.get("H1-1")),
-                    "meta_description": _clean(row.get("Meta Description 1")),
-                }
-            )
-            if len(pages) >= limit:
-                break
-    return pages
-
-
-def _clean(value) -> str:
-    return str(value).strip() if value is not None else ""
 
 
 def _safe_error(service: str, exc: Exception) -> dict[str, str]:

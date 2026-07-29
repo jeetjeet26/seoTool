@@ -18,6 +18,34 @@ before the first client or audit is created. Start with
 [the setup and deployment guide](docs/setup-and-deployment.md) and
 [architecture](docs/architecture.md).
 
+### Tools workspace
+
+Beyond full audits, the `/tools` section runs standalone, review-gated
+workflows. Every run produces editable items that staff approve before any
+export is generated:
+
+- **Keyword research**: Semrush rankings, related keywords, competitors, and
+  backlinks scored and mapped to landing pages.
+- **Bulk metadata**: titles, descriptions, and H1s for every page from a
+  sitemap or an uploaded SEOPress template CSV (existing-site edit mode or
+  development-site first-pass mode).
+- **One-off writing**: focused metadata for a single page with rationale.
+- **Schema markup**: validated ApartmentComplex/FloorPlan JSON-LD built only
+  from supplied facts.
+- **llms.txt**: deterministic generation from the site's sitemap.
+- **Local listing audit**: staff-verifiable checklist for Google/Bing/Apple
+  listings and off-site NAP, seeded from the client intake questionnaire
+  (`/clients/[id]/intake`).
+- **Listing optimization**: keyword-targeted rewrites of third-party listing
+  copy.
+
+Exports include a template-preserving SEOPress import CSV, a developer
+implementation compilation, plain CSVs, JSON-LD snippets, `llms.txt`, and a
+multi-sheet client workbook (Introduction/TOC, Keyword Research, Title Tags,
+Description Tags, H1 Tags, On-Page SEO, Alt Text, Technical SEO, Page Speed,
+Program Recap, Glossary). All exports include only approved items and are
+hardened against spreadsheet formula injection.
+
 ## 🚀 Features
 
 ### Core Capabilities

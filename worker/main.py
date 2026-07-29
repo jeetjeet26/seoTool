@@ -14,11 +14,13 @@ from pathlib import Path
 
 from modules.audit_service import AuditService
 from modules.models import AuditStage, AuditStatus, ProgressEvent
-from worker.artifacts import ArtifactStore
+from worker.artifacts import ArtifactStore, ToolArtifactStore
 from worker.exports import generate_report_exports
 from worker.insights import InsightRunner
 from worker.repository import AuditJob, WorkerRepository
 from worker.settings import WorkerSettings
+from worker.tool_repository import ToolRepository
+from worker.tools import ToolRunner
 
 
 LOGGER = logging.getLogger("seo_audit_worker")
@@ -175,6 +177,43 @@ def process_job(
         shutil.rmtree(job_dir, ignore_errors=True)
 
 
+def process_tool_run(
+    run,
+    tool_repository: ToolRepository,
+    tool_runner: ToolRunner,
+) -> None:
+    LOGGER.info(
+        "Processing tool run",
+        extra={"run_id": run.id, "tool_type": run.tool_type},
+    )
+    with tool_heartbeat(tool_repository, run.id):
+        tool_runner.process(run)
+
+
+@contextmanager
+def tool_heartbeat(repository: ToolRepository, run_id: str, interval: int = 30):
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(interval):
+            try:
+                if not repository.heartbeat(run_id):
+                    LOGGER.warning(
+                        "Tool heartbeat was rejected", extra={"run_id": run_id}
+                    )
+                    return
+            except Exception:
+                LOGGER.exception("Tool heartbeat failed", extra={"run_id": run_id})
+
+    thread = threading.Thread(target=beat, daemon=True, name=f"tool-heartbeat-{run_id}")
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=interval + 1)
+
+
 def run() -> None:
     _configure_logging()
     settings = WorkerSettings.from_env()
@@ -185,6 +224,13 @@ def run() -> None:
         service_role_key=settings.supabase_service_role_key,
         repository=repository,
     )
+    tool_repository = ToolRepository(settings.database_url, settings.worker_id)
+    tool_artifacts = ToolArtifactStore(
+        supabase_url=settings.supabase_url,
+        service_role_key=settings.supabase_service_role_key,
+        repository=tool_repository,
+    )
+    tool_runner = ToolRunner(tool_repository, tool_artifacts)
 
     signal.signal(signal.SIGTERM, _request_shutdown)
     signal.signal(signal.SIGINT, _request_shutdown)
@@ -195,6 +241,10 @@ def run() -> None:
             job = repository.claim_next_job()
             if job:
                 process_job(job, settings, repository, artifacts)
+                continue
+            tool_run = tool_repository.claim_next_run()
+            if tool_run:
+                process_tool_run(tool_run, tool_repository, tool_runner)
                 continue
         except Exception:
             LOGGER.exception("Worker polling failed")

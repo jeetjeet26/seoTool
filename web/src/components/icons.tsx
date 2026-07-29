@@ -1,8 +1,9 @@
 import type { SVGProps } from "react";
 
-export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: "home" | "users" | "scan" | "plus" | "search" | "chevron" | "external" | "check" | "clock" | "alert" | "download" }) {
+export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: "home" | "users" | "scan" | "plus" | "search" | "chevron" | "external" | "check" | "clock" | "alert" | "download" | "wrench" }) {
   const paths = {
     home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></>,
+    wrench: <path d="M14.7 6.3a4.5 4.5 0 0 0-6 5.6L3 17.6V21h3.4l5.7-5.7a4.5 4.5 0 0 0 5.6-6l-3 3-2.8-.7-.7-2.8 3.5-2.5Z"/>,
     users: <><circle cx="9" cy="8" r="4"/><path d="M3 21v-2a6 6 0 0 1 6-6h1M16 4a4 4 0 0 1 0 8M15 13a6 6 0 0 1 6 6v2"/></>,
     scan: <><path d="M4 7V4h3M17 4h3v3M20 17v3h-3M7 20H4v-3"/><circle cx="12" cy="12" r="4"/></>,
     plus: <path d="M12 5v14M5 12h14"/>,

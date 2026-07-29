@@ -11,6 +11,9 @@ import type {
   DataProvider,
   Finding,
   Task,
+  ToolArtifact,
+  ToolRun,
+  ToolRunItem,
 } from "./types";
 
 type ClientRow = {
@@ -58,6 +61,57 @@ type TaskRow = {
   is_client_visible: boolean;
   due_at: string | null;
 };
+
+type ToolRunRow = {
+  id: string;
+  client_id: string;
+  audit_id: string | null;
+  tool_type: ToolRun["toolType"];
+  name: string;
+  status: ToolRun["status"];
+  current_stage: string;
+  progress: number;
+  options: Record<string, unknown> | null;
+  summary: Record<string, unknown> | null;
+  failure_message: string | null;
+  created_at: string;
+  updated_at: string;
+  clients?: { name: string } | null;
+};
+
+type ToolRunItemRow = {
+  id: string;
+  run_id: string;
+  item_type: string;
+  stable_key: string;
+  position: number;
+  input: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  edited_output: Record<string, unknown> | null;
+  review_status: ToolRunItem["reviewStatus"];
+};
+
+const TOOL_RUN_COLUMNS =
+  "id,client_id,audit_id,tool_type,name,status,current_stage,progress,options,summary,failure_message,created_at,updated_at,clients(name)";
+
+function mapToolRun(row: ToolRunRow): ToolRun {
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    clientName: row.clients?.name ?? "Client",
+    auditId: row.audit_id ?? undefined,
+    toolType: row.tool_type,
+    name: row.name,
+    status: row.status,
+    currentStage: row.current_stage,
+    progress: row.progress,
+    options: row.options ?? {},
+    summary: row.summary ?? {},
+    failureMessage: row.failure_message ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 function auditStatus(row: AuditRow): AuditStatus {
   if (row.published_at) return "published";
@@ -233,5 +287,81 @@ export const supabaseData: DataProvider = {
       message: row.message ?? undefined,
       createdAt: row.created_at,
     }));
+  },
+
+  async getToolRuns(): Promise<ToolRun[]> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tool_runs")
+      .select(TOOL_RUN_COLUMNS)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) throw error;
+    return ((data ?? []) as unknown as ToolRunRow[]).map(mapToolRun);
+  },
+
+  async getToolRun(id: string): Promise<ToolRun | undefined> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tool_runs")
+      .select(TOOL_RUN_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapToolRun(data as unknown as ToolRunRow) : undefined;
+  },
+
+  async getToolRunItems(runId: string): Promise<ToolRunItem[]> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tool_run_items")
+      .select(
+        "id,run_id,item_type,stable_key,position,input,output,edited_output,review_status",
+      )
+      .eq("run_id", runId)
+      .order("position");
+    if (error) throw error;
+
+    return ((data ?? []) as ToolRunItemRow[]).map((row) => ({
+      id: row.id,
+      runId: row.run_id,
+      itemType: row.item_type,
+      stableKey: row.stable_key,
+      position: row.position,
+      input: row.input ?? {},
+      output: row.output ?? {},
+      editedOutput: row.edited_output ?? undefined,
+      reviewStatus: row.review_status,
+    }));
+  },
+
+  async getToolArtifacts(runId: string): Promise<ToolArtifact[]> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tool_artifacts")
+      .select("id,run_id,kind,object_path,content_type,byte_size")
+      .eq("run_id", runId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      runId: row.run_id,
+      kind: row.kind,
+      objectPath: row.object_path,
+      contentType: row.content_type ?? undefined,
+      byteSize: row.byte_size ?? undefined,
+    }));
+  },
+
+  async getToolRunsForAudit(auditId: string): Promise<ToolRun[]> {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase
+      .from("tool_runs")
+      .select(TOOL_RUN_COLUMNS)
+      .eq("audit_id", auditId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return ((data ?? []) as unknown as ToolRunRow[]).map(mapToolRun);
   },
 };
