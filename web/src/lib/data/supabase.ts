@@ -228,16 +228,25 @@ export const supabaseData: DataProvider = {
 
   async getFindings(auditId: string): Promise<Finding[]> {
     const supabase = await createSupabaseServerClient();
-    const { data, error } = await supabase
-      .from("findings")
-      .select(
-        "id,category,rule_key,severity,status,title,page_url,resource_url,recommendation",
-      )
-      .eq("audit_id", auditId)
-      .order("severity");
-    if (error) throw error;
+    const rows: FindingRow[] = [];
+    const batchSize = 1000;
+    for (let from = 0; ; from += batchSize) {
+      const { data, error } = await supabase
+        .from("findings")
+        .select(
+          "id,category,rule_key,severity,status,title,page_url,resource_url,recommendation",
+        )
+        .eq("audit_id", auditId)
+        .order("severity")
+        .order("id")
+        .range(from, from + batchSize - 1);
+      if (error) throw error;
+      const batch = (data ?? []) as FindingRow[];
+      rows.push(...batch);
+      if (batch.length < batchSize) break;
+    }
 
-    return ((data ?? []) as FindingRow[]).map((row) => ({
+    return rows.map((row) => ({
       id: row.id,
       category: mapCategory(row.category),
       severity: mapSeverity(row.severity),
