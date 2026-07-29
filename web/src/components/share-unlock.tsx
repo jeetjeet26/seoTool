@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import type { PortalPayload } from "@/lib/share/types";
 
+import { AuditInsights } from "./audit-insights";
+import { ClientFindingChecklist } from "./client-finding-checklist";
 import { Icon } from "./icons";
 
 export function ShareUnlock({ token }: { token: string }) {
@@ -60,13 +62,17 @@ export function ShareUnlock({ token }: { token: string }) {
         : 0;
     return <div className="share-report">
       <div className="share-heading"><div><p className="eyebrow">Shared audit</p><h1>{portal.clientName}</h1><p>{portal.reportName}</p></div>{portal.score !== null && <span className="score-ring">{portal.score}<small>/100</small></span>}</div>
-      <section className="card"><div className="section-title"><div><h2>Remediation progress</h2><p>{portal.completedTasks} of {portal.totalTasks} assigned tasks completed</p></div><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%` }} /></div></section>
-      <section className="task-list">
-        {portal.tasks.map((task) => {
-          const done = task.status === "done";
-          return <div className="task" key={task.id}><span className={`task-check ${done ? "done" : ""}`}><Icon name="check"/></span><div><strong>{task.title}</strong><small>{task.priority} priority · {task.status.replace("_", " ")}</small></div></div>;
-        })}
-      </section>
+      <ClientFindingChecklist findings={portal.findings} token={token}/>
+      <AuditInsights summary={portal.summary}/>
+      {portal.totalTasks > 0 && <>
+        <section className="card"><div className="section-title"><div><h2>Assigned task progress</h2><p>{portal.completedTasks} of {portal.totalTasks} assigned tasks completed</p></div><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%` }} /></div></section>
+        <section className="task-list">
+          {portal.tasks.map((task) => {
+            const done = task.status === "done";
+            return <div className="task" key={task.id}><span className={`task-check ${done ? "done" : ""}`}><Icon name="check"/></span><div><strong>{task.title}</strong><small>{task.priority} priority · {task.status.replace("_", " ")}</small></div></div>;
+          })}
+        </section>
+      </>}
     </div>;
   }
 

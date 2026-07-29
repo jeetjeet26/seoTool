@@ -1,3 +1,5 @@
+import type { AuditSummary, Finding } from "@/lib/data/types";
+
 export interface PortalTask {
   id: string;
   title: string;
@@ -14,4 +16,6 @@ export interface PortalPayload {
   completedTasks: number;
   totalTasks: number;
   tasks: PortalTask[];
+  summary: AuditSummary;
+  findings: Finding[];
 }

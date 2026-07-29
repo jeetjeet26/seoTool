@@ -10,6 +10,7 @@ import {
 import postgres from "postgres";
 
 import { isShareBackendConfigured } from "@/lib/config";
+import type { AuditSummary, Finding } from "@/lib/data/types";
 import type { PortalPayload, PortalTask } from "@/lib/share/types";
 
 interface PortalSession {
@@ -180,6 +181,54 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
     priority: task.priority,
     dueAt: task.due_at,
   }));
+  const findingRows = await sql<
+    Array<{
+      id: string;
+      category: string;
+      rule_key: string;
+      severity: string;
+      status: Finding["status"];
+      title: string;
+      page_url: string | null;
+      resource_url: string | null;
+      recommendation: string;
+    }>
+  >`
+    select
+      id::text,
+      category,
+      rule_key,
+      severity,
+      status,
+      title,
+      page_url,
+      resource_url,
+      recommendation
+    from public.findings
+    where audit_id = ${auditId}::uuid
+    order by
+      case severity
+        when 'critical' then 1
+        when 'high' then 2
+        when 'medium' then 3
+        when 'low' then 4
+        else 5
+      end,
+      title,
+      page_url
+  `;
+  const findings: Finding[] = findingRows.map((finding) => ({
+    id: finding.id,
+    category: mapFindingCategory(finding.category),
+    ruleKey: finding.rule_key,
+    severity: mapFindingSeverity(finding.severity),
+    status: finding.status,
+    title: finding.title,
+    occurrences: 1,
+    pageUrl: finding.page_url ?? "",
+    resourceUrl: finding.resource_url ?? undefined,
+    recommendation: finding.recommendation,
+  }));
   const score =
     typeof audit.summary?.score === "number" ? audit.summary.score : null;
 
@@ -191,5 +240,49 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
     completedTasks: tasks.filter((task) => task.status === "done").length,
     totalTasks: tasks.length,
     tasks,
+    summary: (audit.summary ?? {}) as AuditSummary,
+    findings,
   };
+}
+
+export async function updatePortalFindings(
+  auditId: string,
+  findingIds: string[],
+  status: "open" | "resolved",
+): Promise<number> {
+  const sql = database();
+  const rows = await sql<Array<{ id: string }>>`
+    update public.findings
+    set
+      status = ${status},
+      resolved_at = ${status === "resolved" ? new Date().toISOString() : null}
+    where audit_id = ${auditId}::uuid
+      and id in ${sql(findingIds)}
+    returning id::text
+  `;
+  return rows.length;
+}
+
+function mapFindingCategory(category: string): Finding["category"] {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("metadata")) return "Metadata";
+  if (normalized.includes("content") || normalized.includes("heading")) return "Content";
+  if (
+    normalized.includes("link")
+    || normalized.includes("response")
+    || normalized.includes("redirect")
+  ) return "Links";
+  if (normalized.includes("performance")) return "Performance";
+  if (normalized.includes("accessibility")) return "Accessibility";
+  if (normalized.includes("security")) return "Security";
+  return "Crawlability";
+}
+
+function mapFindingSeverity(severity: string): Finding["severity"] {
+  const normalized = severity.toLowerCase();
+  if (normalized === "critical") return "Critical";
+  if (normalized === "high") return "High";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "low") return "Low";
+  return "Info";
 }
