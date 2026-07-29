@@ -16,6 +16,12 @@ fi
 
 export SCREAMING_FROG_PATH="${SCREAMING_FROG_PATH:-/usr/bin/screamingfrogseospider}"
 
-echo "entrypoint: licence installed, launching worker under xvfb-run"
+echo "entrypoint: licence installed, starting Xvfb"
 
-exec xvfb-run -a python -m worker.main
+# Start a virtual display for Screaming Frog; don't block worker startup on it.
+Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
+export DISPLAY=:99
+
+echo "entrypoint: launching worker"
+
+exec python -m worker.main
