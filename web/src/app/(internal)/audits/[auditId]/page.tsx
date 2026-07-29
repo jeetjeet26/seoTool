@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { PageHeader, Status } from "@/components/app-shell";
 import { TaskReview } from "@/components/task-review";
+import { RunAutoRefresh } from "@/components/tools/run-progress";
 import { data } from "@/lib/data";
 
 const stages = ["Queued", "Crawling", "Analyzing", "Review ready", "Published"];
@@ -16,6 +17,7 @@ export default async function AuditPage({ params }: { params: Promise<{ auditId:
   ]);
   if (!audit) notFound();
   return <>
+    <RunAutoRefresh active={audit.status === "queued" || audit.status === "running"}/>
     <div className="breadcrumbs"><Link href="/dashboard">Dashboard</Link><Icon name="chevron"/><span>{audit.id}</span></div>
     <PageHeader eyebrow={audit.id} title={audit.clientName} description={audit.url} action={<div className="action-row"><Status value={audit.status}/>{audit.score !== null && <Link className="button primary" href={`/audits/${audit.id}/report`}>Open report</Link>}</div>} />
     {audit.status === "failed" && audit.failedReason && <div className="notice danger"><Icon name="alert"/><span><strong>Audit stopped during processing</strong>{audit.failedReason}</span></div>}
