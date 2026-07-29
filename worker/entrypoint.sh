@@ -78,9 +78,28 @@ export SCREAMING_FROG_PATH="${SCREAMING_FROG_PATH:-/usr/bin/screamingfrogseospid
 
 echo "entrypoint: licence installed, starting Xvfb"
 
-# Start a virtual display for Screaming Frog; don't block worker startup on it.
-Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
-export DISPLAY=:99
+# Screaming Frog documents DISPLAY=:0 for Linux headless operation. Wait for
+# the X11 socket before launching the worker so image processing cannot race
+# the virtual display startup.
+export DISPLAY=:0
+rm -f /tmp/.X0-lock
+Xvfb :0 -screen 0 1280x800x24 -nolisten tcp &
+XVFB_PID=$!
+
+attempt=0
+while [ ! -S /tmp/.X11-unix/X0 ]; do
+  if ! kill -0 "${XVFB_PID}" 2>/dev/null; then
+    echo "Xvfb exited before its display became ready." >&2
+    wait "${XVFB_PID}" || true
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  if [ "${attempt}" -ge 100 ]; then
+    echo "Timed out waiting for Xvfb display :0." >&2
+    exit 1
+  fi
+  sleep 0.1
+done
 
 echo "entrypoint: launching worker"
 

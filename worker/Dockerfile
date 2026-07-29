@@ -13,6 +13,22 @@ RUN apt-get update \
         ca-certificates \
         curl \
         fonts-dejavu-core \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libgbm1 \
+        libglib2.0-0 \
+        libgtk-3-0 \
+        libnss3 \
+        libx11-6 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxext6 \
+        libxi6 \
+        libxrandr2 \
+        libxrender1 \
+        libxss1 \
+        libxtst6 \
         xauth \
         xvfb \
     && curl --fail --location "${SCREAMING_FROG_DEB_URL}" --output /tmp/screamingfrog.deb \
