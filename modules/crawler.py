@@ -82,8 +82,18 @@ class Crawler:
             ]
 
             if result.returncode != 0:
+                crash_detail = self._read_crash_file(combined_output)
+                detail = "\n".join(
+                    part
+                    for part in (
+                        stdout[-1500:],
+                        stderr[-1500:],
+                        f"Crash file:\n{crash_detail}" if crash_detail else "",
+                    )
+                    if part
+                )
                 raise CrawlError(
-                    f"Screaming Frog exited with code {result.returncode}",
+                    f"Screaming Frog exited with code {result.returncode}\n{detail}",
                     stdout,
                     stderr,
                     result.returncode,
