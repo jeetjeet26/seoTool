@@ -2,7 +2,16 @@
 set -eu
 
 SF_HOME="${HOME}/.ScreamingFrogSEOSpider"
-mkdir -p "${SF_HOME}"
+
+# Keep Screaming Frog state (machine id, licence lease) on the persistent disk
+# so redeploys don't request a new licence lease every time.
+if [ -d /var/data ]; then
+  mkdir -p /var/data/screamingfrog
+  rm -rf "${SF_HOME}"
+  ln -s /var/data/screamingfrog "${SF_HOME}"
+else
+  mkdir -p "${SF_HOME}"
+fi
 
 if [ -n "${SCREAMING_FROG_LICENSE_B64:-}" ]; then
   printf '%s' "${SCREAMING_FROG_LICENSE_B64}" | base64 --decode > "${SF_HOME}/licence.txt"
