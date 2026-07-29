@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 
 import { isShareBackendConfigured } from "@/lib/config";
 import {
+  createPortalSession,
   loadPortalProgress,
+  PORTAL_SESSION_MAX_AGE_SECONDS,
   verifyPortalSession,
 } from "@/lib/share/server";
 
@@ -30,10 +32,22 @@ export async function GET(
 
   try {
     const progress = await loadPortalProgress(session.auditId);
-    return NextResponse.json(
+    const response = NextResponse.json(
       { progress },
       { headers: { "Cache-Control": "private, no-store" } },
     );
+    response.cookies.set(
+      "seo_portal_session",
+      createPortalSession(session.auditId, token),
+      {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        maxAge: PORTAL_SESSION_MAX_AGE_SECONDS,
+        path: "/",
+      },
+    );
+    return response;
   } catch {
     return NextResponse.json(
       { error: "Report progress is temporarily unavailable." },

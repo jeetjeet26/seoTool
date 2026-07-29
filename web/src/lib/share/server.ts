@@ -20,6 +20,8 @@ interface PortalSession {
   nonce: string;
 }
 
+export const PORTAL_SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
 let databaseClient: ReturnType<typeof postgres> | undefined;
 
 function database() {
@@ -47,7 +49,7 @@ export function createPortalSession(auditId: string, token: string): string {
   const session: PortalSession = {
     auditId,
     tokenHash: hashShareToken(token),
-    expiresAt: Date.now() + 30 * 60 * 1000,
+    expiresAt: Date.now() + PORTAL_SESSION_MAX_AGE_SECONDS * 1000,
     nonce: randomBytes(16).toString("hex"),
   };
   const payload = Buffer.from(JSON.stringify(session)).toString("base64url");

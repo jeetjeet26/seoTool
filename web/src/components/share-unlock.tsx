@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { PortalPayload, PortalProgress } from "@/lib/share/types";
 
@@ -10,8 +10,13 @@ import { Icon } from "./icons";
 
 export function ShareUnlock({ token }: { token: string }) {
   const [portal, setPortal] = useState<PortalPayload | null>(null);
+  const portalRef = useRef<PortalPayload | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    portalRef.current = portal;
+  }, [portal]);
 
   useEffect(() => {
     let stopped = false;
@@ -41,7 +46,10 @@ export function ShareUnlock({ token }: { token: string }) {
             `/api/share/${encodeURIComponent(token)}/progress`,
             { signal: controller.signal, cache: "no-store" },
           );
-          if (response.ok) {
+          if (response.status === 401 && portalRef.current) {
+            setPortal(null);
+            setError("Your portal session expired. Enter the PIN again to continue.");
+          } else if (response.ok) {
             const body = (await response.json()) as { progress?: PortalProgress };
             if (body.progress) {
               const progress = body.progress;

@@ -4,6 +4,7 @@ import { isShareBackendConfigured } from "@/lib/config";
 import {
   createPortalSession,
   loadPortal,
+  PORTAL_SESSION_MAX_AGE_SECONDS,
   validateTokenAndPin,
 } from "@/lib/share/server";
 
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 30 * 60,
+    maxAge: PORTAL_SESSION_MAX_AGE_SECONDS,
     path: "/",
   });
   return response;
