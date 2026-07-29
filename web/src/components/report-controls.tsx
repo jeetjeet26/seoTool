@@ -90,7 +90,16 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
   return (
     <>
       <div className="filterbar" aria-label="Filter findings">
-        {["All", "Critical", "High", "Medium", "Low", "Info"].map((value) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}<span>{value === "All" ? groups.length : groups.filter((group) => group.severity === value).length}</span></button>)}
+        {["All", "Critical", "High", "Medium", "Low", "Info"].map((value) => {
+          const matchingGroups = value === "All"
+            ? groups
+            : groups.filter((group) => group.severity === value);
+          const occurrenceCount = matchingGroups.reduce(
+            (total, group) => total + group.occurrences,
+            0,
+          );
+          return <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}<span>{occurrenceCount}</span></button>;
+        })}
         <button className="task-selection-button" onClick={createTasks} disabled={!selected.size || creatingTasks}>{creatingTasks ? "Creating…" : `Create tasks (${selected.size})`}</button>
       </div>
       {taskMessage && <p className="inline-message finding-message" role="status">{taskMessage}</p>}

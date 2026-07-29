@@ -85,16 +85,23 @@ export function ClientFindingChecklist({
     </div>
     <div className="progress"><span style={{ width: `${totalUrls ? (fixedUrls / totalUrls) * 100 : 0}%` }} /></div>
     <div className="filterbar" aria-label="Filter findings">
-      {["All", "Critical", "High", "Medium", "Low", "Info"].map((value) => (
-        <button
+      {["All", "Critical", "High", "Medium", "Low", "Info"].map((value) => {
+        const matchingGroups = value === "All"
+          ? groups
+          : groups.filter((group) => group.severity === value);
+        const occurrenceCount = matchingGroups.reduce(
+          (total, group) => total + group.occurrences,
+          0,
+        );
+        return <button
           key={value}
           className={filter === value ? "active" : ""}
           onClick={() => setFilter(value)}
         >
           {value}
-          <span>{value === "All" ? groups.length : groups.filter((group) => group.severity === value).length}</span>
-        </button>
-      ))}
+          <span>{occurrenceCount}</span>
+        </button>;
+      })}
     </div>
     {message && <p className="inline-message finding-message" role="alert">{message}</p>}
     <div className="table-wrap">
