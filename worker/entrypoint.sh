@@ -32,6 +32,14 @@ if [ ! -s "${SF_HOME}/licence.txt" ]; then
   exit 1
 fi
 
+# Accept the EULA for headless operation (no GUI to click through).
+if ! grep -q '^eula.accepted=' "${SF_HOME}/spider.config" 2>/dev/null; then
+  printf 'eula.accepted=15\n' >> "${SF_HOME}/spider.config"
+fi
+
+# Remove stale crash logs so failures reported by the crawler are current.
+rm -f "${SF_HOME}/crash.txt"
+
 export SCREAMING_FROG_PATH="${SCREAMING_FROG_PATH:-/usr/bin/screamingfrogseospider}"
 
 echo "entrypoint: licence installed, starting Xvfb"
