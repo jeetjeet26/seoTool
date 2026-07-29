@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { PortalPayload } from "@/lib/share/types";
+import type { PortalPayload, PortalProgress } from "@/lib/share/types";
 
 import { AuditInsights } from "./audit-insights";
 import { ClientFindingChecklist } from "./client-finding-checklist";
@@ -14,18 +14,65 @@ export function ShareUnlock({ token }: { token: string }) {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const controller = new AbortController();
-    fetch(`/api/share/${encodeURIComponent(token)}`, {
-      signal: controller.signal,
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const body = (await response.json()) as { portal?: PortalPayload };
-        if (body.portal) setPortal(body.portal);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
+
+    async function hydrate() {
+      try {
+        const response = await fetch(`/api/share/${encodeURIComponent(token)}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (response.ok) {
+          const body = (await response.json()) as { portal?: PortalPayload };
+          if (body.portal) setPortal(body.portal);
+        }
+      } catch {
+        // The PIN form remains available when no active session exists.
+      }
+      if (!stopped) timer = setTimeout(refresh, 5000);
+    }
+
+    async function refresh() {
+      if (document.visibilityState !== "hidden") {
+        try {
+          const response = await fetch(
+            `/api/share/${encodeURIComponent(token)}/progress`,
+            { signal: controller.signal, cache: "no-store" },
+          );
+          if (response.ok) {
+            const body = (await response.json()) as { progress?: PortalProgress };
+            if (body.progress) {
+              const progress = body.progress;
+              const statuses = new Map(
+                progress.findings.map((finding) => [finding.id, finding.status]),
+              );
+              setPortal((current) => current ? {
+                ...current,
+                completedTasks: progress.completedTasks,
+                totalTasks: progress.totalTasks,
+                tasks: progress.tasks,
+                findings: current.findings.map((finding) => ({
+                  ...finding,
+                  status: statuses.get(finding.id) ?? finding.status,
+                })),
+              } : current);
+            }
+          }
+        } catch {
+          // Keep the last successful state during a transient refresh failure.
+        }
+      }
+      if (!stopped) timer = setTimeout(refresh, 5000);
+    }
+
+    void hydrate();
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      controller.abort();
+    };
   }, [token]);
 
   async function unlock(event: React.FormEvent<HTMLFormElement>) {
@@ -60,9 +107,12 @@ export function ShareUnlock({ token }: { token: string }) {
       portal.totalTasks > 0
         ? Math.round((portal.completedTasks / portal.totalTasks) * 100)
         : 0;
+    const findingsRevision = portal.findings
+      .map((finding) => `${finding.id}:${finding.status}`)
+      .join("|");
     return <div className="share-report">
       <div className="share-heading"><div><p className="eyebrow">Shared audit</p><h1>{portal.clientName}</h1><p>{portal.reportName}</p></div>{portal.score !== null && <span className="score-ring">{portal.score}<small>/100</small></span>}</div>
-      <ClientFindingChecklist findings={portal.findings} token={token}/>
+      <ClientFindingChecklist key={findingsRevision} findings={portal.findings} token={token}/>
       <AuditInsights summary={portal.summary}/>
       {portal.totalTasks > 0 && <>
         <section className="card"><div className="section-title"><div><h2>Assigned task progress</h2><p>{portal.completedTasks} of {portal.totalTasks} assigned tasks completed</p></div><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%` }} /></div></section>

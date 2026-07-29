@@ -19,3 +19,10 @@ export interface PortalPayload {
   summary: AuditSummary;
   findings: Finding[];
 }
+
+export interface PortalProgress {
+  completedTasks: number;
+  totalTasks: number;
+  tasks: PortalTask[];
+  findings: Array<Pick<Finding, "id" | "status">>;
+}

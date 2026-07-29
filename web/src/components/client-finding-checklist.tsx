@@ -15,10 +15,15 @@ export function ClientFindingChecklist({
 }) {
   const [filter, setFilter] = useState("All");
   const [message, setMessage] = useState("");
-  const [statusById, setStatusById] = useState(
-    () => new Map(findings.map((finding) => [finding.id, finding.status])),
+  const [statusOverrides, setStatusOverrides] = useState<Map<string, Finding["status"]>>(
+    () => new Map(),
   );
   const [updating, setUpdating] = useState<Set<string>>(() => new Set());
+  const statusById = useMemo(() => {
+    const statuses = new Map(findings.map((finding) => [finding.id, finding.status]));
+    statusOverrides.forEach((status, id) => statuses.set(id, status));
+    return statuses;
+  }, [findings, statusOverrides]);
   const groups = useMemo(
     () => groupFindings(findings, statusById),
     [findings, statusById],
@@ -32,10 +37,10 @@ export function ClientFindingChecklist({
   async function toggleUrl(groupKey: string, occurrence: UrlOccurrence) {
     const pendingKey = `${groupKey}:${occurrence.key}`;
     const nextStatus: Finding["status"] = occurrence.resolved ? "open" : "resolved";
-    const previous = new Map(statusById);
+    const previous = new Map(statusOverrides);
     setMessage("");
     setUpdating((current) => new Set(current).add(pendingKey));
-    setStatusById((current) => {
+    setStatusOverrides((current) => {
       const next = new Map(current);
       occurrence.findingIds.forEach((id) => next.set(id, nextStatus));
       return next;
@@ -55,11 +60,11 @@ export function ClientFindingChecklist({
       );
       const body = (await response.json()) as { error?: string };
       if (!response.ok) {
-        setStatusById(previous);
+        setStatusOverrides(previous);
         setMessage(body.error ?? "The URL status could not be updated.");
       }
     } catch {
-      setStatusById(previous);
+      setStatusOverrides(previous);
       setMessage("The URL status could not be updated.");
     } finally {
       setUpdating((current) => {

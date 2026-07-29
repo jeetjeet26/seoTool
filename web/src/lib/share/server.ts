@@ -11,7 +11,7 @@ import postgres from "postgres";
 
 import { isShareBackendConfigured } from "@/lib/config";
 import type { AuditSummary, Finding } from "@/lib/data/types";
-import type { PortalPayload, PortalTask } from "@/lib/share/types";
+import type { PortalPayload, PortalProgress, PortalTask } from "@/lib/share/types";
 
 interface PortalSession {
   auditId: string;
@@ -261,6 +261,48 @@ export async function updatePortalFindings(
     returning id::text
   `;
   return rows.length;
+}
+
+export async function loadPortalProgress(
+  auditId: string,
+): Promise<PortalProgress> {
+  const sql = database();
+  const [taskRows, findingRows] = await Promise.all([
+    sql<
+      Array<{
+        id: string;
+        title: string;
+        status: PortalTask["status"];
+        priority: PortalTask["priority"];
+        due_at: string | null;
+      }>
+    >`
+      select id::text, title, status, priority, due_at::text
+      from public.tasks
+      where audit_id = ${auditId}::uuid
+        and is_client_visible
+        and published_at is not null
+      order by created_at
+    `,
+    sql<Array<{ id: string; status: Finding["status"] }>>`
+      select id::text, status
+      from public.findings
+      where audit_id = ${auditId}::uuid
+    `,
+  ]);
+  const tasks = taskRows.map((task) => ({
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    priority: task.priority,
+    dueAt: task.due_at,
+  }));
+  return {
+    completedTasks: tasks.filter((task) => task.status === "done").length,
+    totalTasks: tasks.length,
+    tasks,
+    findings: findingRows,
+  };
 }
 
 function mapFindingCategory(category: string): Finding["category"] {
