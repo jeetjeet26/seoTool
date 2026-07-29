@@ -13,6 +13,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         fonts-dejavu-core \
+        xauth \
         xvfb \
     && curl --fail --location "${SCREAMING_FROG_DEB_URL}" --output /tmp/screamingfrog.deb \
     && apt-get install -y --no-install-recommends /tmp/screamingfrog.deb \
