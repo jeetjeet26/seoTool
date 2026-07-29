@@ -2,6 +2,22 @@
 
 A comprehensive Python-based tool designed to automate SEO auditing, analysis, and reporting for multifamily real estate websites. This tool orchestrates a workflow that combines technical crawling, keyword market analysis, and AI-driven content optimization into a single, actionable Excel report.
 
+## Web platform MVP
+
+The repository now also contains an internal audit platform:
+
+- `web/`: Next.js dashboard, report review, CSV/PDF exports, and secure client
+  task portal
+- `supabase/`: local-first Postgres schema, Auth profiles, RLS, Storage, job
+  queue, and hashed share-link functions
+- `worker/`: Render-ready Screaming Frog worker with normalized findings,
+  enrichment, and CSV/Excel artifact generation
+
+The UI reads live workspace data from Supabase and shows explicit empty states
+before the first client or audit is created. Start with
+[the setup and deployment guide](docs/setup-and-deployment.md) and
+[architecture](docs/architecture.md).
+
 ## 🚀 Features
 
 ### Core Capabilities

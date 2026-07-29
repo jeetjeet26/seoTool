@@ -1,7 +1,25 @@
 import subprocess
 import os
 import sys
+import re
+from urllib.parse import urlparse
 from config import Config
+
+
+class CrawlError(RuntimeError):
+    """Raised when Screaming Frog does not produce a usable crawl."""
+
+    def __init__(self, message, stdout="", stderr="", returncode=None):
+        super().__init__(message)
+        self.stdout = stdout or ""
+        self.stderr = stderr or ""
+        self.returncode = returncode
+
+
+# Descriptive aliases for worker/API consumers.
+CrawlerError = CrawlError
+CrawlExecutionError = CrawlError
+
 
 class Crawler:
     def __init__(self):
@@ -12,20 +30,27 @@ class Crawler:
         Executes Screaming Frog in headless mode to crawl the given URL.
         Generates CSV reports in the specified output directory.
         """
+        parsed_url = urlparse(url) if isinstance(url, str) else None
+        if (
+            not parsed_url
+            or parsed_url.scheme not in {"http", "https"}
+            or not parsed_url.hostname
+            or parsed_url.username
+            or parsed_url.password
+        ):
+            raise ValueError("url must be an absolute HTTP(S) URL without credentials")
+        if not isinstance(output_dir, (str, os.PathLike)) or not str(output_dir).strip():
+            raise ValueError("output_dir must be a non-empty path")
+
         print(f"Starting crawl for: {url}")
         print(f"Output directory: {output_dir}")
 
-        # Ensure output directory exists and is empty
-        if os.path.exists(output_dir):
-            for file in os.listdir(output_dir):
-                file_path = os.path.join(output_dir, file)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                except Exception as e:
-                    print(f"Error deleting file {file_path}: {e}")
-        
+        # Callers should use an audit-specific directory. Never clean the whole
+        # directory: it may contain artifacts belonging to another process.
         os.makedirs(output_dir, exist_ok=True)
+        internal_export = os.path.join(output_dir, "internal_all.csv")
+        if os.path.isfile(internal_export):
+            os.unlink(internal_export)
 
         # Construct the command
         # Note: Enclose paths in quotes if they contain spaces (handled by subprocess list args usually, but be careful)
@@ -40,28 +65,50 @@ class Crawler:
 
         try:
             print(f"Running command: {' '.join(cmd)}")
-            # Run the command
             result = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                check=True
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False
             )
-            
+
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            combined_output = "\n".join((stdout, stderr))
+            fatal_lines = [
+                line.strip()
+                for line in combined_output.splitlines()
+                if re.search(r"\bFATAL\b", line, flags=re.IGNORECASE)
+            ]
+
+            if result.returncode != 0:
+                raise CrawlError(
+                    f"Screaming Frog exited with code {result.returncode}",
+                    stdout,
+                    stderr,
+                    result.returncode,
+                )
+            if fatal_lines:
+                raise CrawlError(
+                    "Screaming Frog reported a fatal error: " + fatal_lines[0],
+                    stdout,
+                    stderr,
+                    result.returncode,
+                )
+            if not os.path.isfile(internal_export):
+                raise CrawlError(
+                    "Screaming Frog returned success but did not create internal_all.csv",
+                    stdout,
+                    stderr,
+                    result.returncode,
+                )
+
             print("Crawl completed successfully.")
-            print(result.stdout)
-            
-        except subprocess.CalledProcessError as e:
-            print(f"Error running Screaming Frog: {e}")
-            print(f"Stdout: {e.stdout}")
-            print(f"Stderr: {e.stderr}")
-            raise
+            print(stdout)
         except FileNotFoundError:
-             print(f"Error: Screaming Frog executable not found at {self.sf_path}. Please check your configuration.")
-             raise
-        except Exception as e:
-            print(f"An unexpected error occurred during the crawl: {e}")
-            raise
+            raise CrawlError(
+                f"Screaming Frog executable not found at {self.sf_path}"
+            )
 
     def verify_output(self, output_dir: str):
         """

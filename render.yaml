@@ -1,0 +1,33 @@
+services:
+  - type: worker
+    name: seo-audit-worker
+    runtime: docker
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: .
+    plan: standard
+    numInstances: 1
+    envVars:
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SEMRUSH_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PAGESPEED_API_KEY
+        sync: false
+      - key: SCREAMING_FROG_LICENSE_B64
+        sync: false
+      - key: WORKER_ID
+        value: render-worker-1
+      - key: WORKER_POLL_SECONDS
+        value: "5"
+      - key: AUDIT_WORK_ROOT
+        value: /var/data/seo-audits
+    disk:
+      name: audit-worker-data
+      mountPath: /var/data
+      sizeGB: 10

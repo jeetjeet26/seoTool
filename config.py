@@ -28,6 +28,7 @@ class Config:
     # API Keys
     SEMRUSH_API_KEY = os.getenv("SEMRUSH_API_KEY")
     ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    PAGESPEED_API_KEY = os.getenv("PAGESPEED_API_KEY")
     
     # Paths
     # Prefer SCREAMING_FROG_PATH; keep SF_HEADLESS_PATH for older setup docs.
