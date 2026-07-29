@@ -78,10 +78,13 @@ class Crawler:
             fatal_lines = [
                 line.strip()
                 for line in combined_output.splitlines()
-                if re.search(r"\bFATAL\b", line, flags=re.IGNORECASE)
+                # Match the FATAL log level only, e.g. "[main] FATAL - ...".
+                # SF also prints an INFO line "Fatal Log File: ..." on healthy
+                # runs, which must not be treated as an error.
+                if re.search(r"\bFATAL\s+-\s", line)
             ]
 
-            if result.returncode != 0 or fatal_lines:
+            if result.returncode != 0 or fatal_lines or not os.path.isfile(internal_export):
                 # Surface full Screaming Frog output in worker logs for diagnosis.
                 print("Screaming Frog output (tail):")
                 print(combined_output[-6000:])
