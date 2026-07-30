@@ -69,6 +69,12 @@ class FakeSemrush:
     def get_keyword_ideas(self, phrase, limit=40):
         return [{"keyword": f"{phrase} ideas", "volume": 50}]
 
+    def get_keyword_data(self, keywords):
+        return {
+            keyword: {"volume": 100, "kd": 25}
+            for keyword in keywords
+        }
+
 
 class FakeGenerator:
     def generate_bulk_metadata(self, pages, mode="existing", client_context=None, on_progress=None):

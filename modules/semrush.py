@@ -188,7 +188,7 @@ class SemrushClient:
                 "volume": _to_int(row.get("Search Volume")),
                 "cpc": _to_float(row.get("CPC")),
                 "competition": _to_float(row.get("Competition")),
-                "difficulty": _to_float(row.get("Keyword Difficulty")),
+                "difficulty": _keyword_difficulty(row),
                 "landing_page": row.get("Url", ""),
                 "traffic_percent": _to_float(row.get("Traffic (%)")),
             }
@@ -256,7 +256,7 @@ class SemrushClient:
                 "volume": _to_int(row.get("Search Volume")),
                 "cpc": _to_float(row.get("CPC")),
                 "competition": _to_float(row.get("Competition")),
-                "difficulty": _to_float(row.get("Keyword Difficulty")),
+                "difficulty": _keyword_difficulty(row),
             }
             for row in rows
             if row.get("Keyword")
@@ -275,6 +275,14 @@ def _to_float(value) -> float:
         return float(str(value))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _keyword_difficulty(row: dict) -> float:
+    """Normalize Semrush's report-specific keyword difficulty headers."""
+    return _to_float(
+        row.get("Keyword Difficulty")
+        or row.get("Keyword Difficulty Index")
+    )
 
 
 if __name__ == "__main__":

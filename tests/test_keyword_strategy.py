@@ -86,6 +86,26 @@ class KeywordStrategyTests(unittest.TestCase):
         self.assertTrue(seeds)
         self.assertTrue(all(entry["evidence"] for entry in results))
 
+    def test_seed_keywords_use_semrush_metrics(self):
+        results = build_keyword_strategy(
+            location="Long Beach, California",
+            target_url="https://example.com/",
+            seed_metrics={
+                "luxury apartments Long Beach": {
+                    "volume": 390,
+                    "kd": 47,
+                }
+            },
+        )
+        seed = next(
+            entry
+            for entry in results
+            if entry["keyword"] == "luxury apartments long beach"
+        )
+        self.assertEqual(seed["volume"], 390)
+        self.assertEqual(seed["difficulty"], 47)
+        self.assertEqual(seed["evidence"]["semrush_report"], "phrase_this")
+
     def test_max_keywords_cap(self):
         related = [
             {"keyword": f"apartments for rent dallas {index}", "volume": index}

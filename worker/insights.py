@@ -62,6 +62,7 @@ class InsightRunner:
         domain = urlsplit(job.target_url).hostname or ""
         rankings: list[dict] = []
         related: list[dict] = []
+        seed_metrics: dict[str, dict] = {}
         try:
             result["semrush"] = self.semrush.get_domain_overview(domain)
             rankings = self.semrush.get_organic_positions(domain)
@@ -72,8 +73,10 @@ class InsightRunner:
                 job.options.get("competitor_domains") or [],
             )
             result["backlinks"] = self.semrush.get_backlinks_overview(domain)
-            for phrase in seed_phrases(job.location)[:3]:
+            audit_seeds = seed_phrases(job.location)
+            for phrase in audit_seeds[:3]:
                 related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
+            seed_metrics = self.semrush.get_keyword_data(audit_seeds)
         except Exception as exc:  # noqa: BLE001
             result["enrichment_errors"].append(_safe_error("semrush", exc))
         if hasattr(self.semrush, "consume_diagnostics"):
@@ -90,6 +93,7 @@ class InsightRunner:
             target_url=job.target_url,
             rankings=rankings,
             related=related,
+            seed_metrics=seed_metrics,
             page_urls=[page.url for page in pages],
             max_keywords=40,
         )

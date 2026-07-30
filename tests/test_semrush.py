@@ -42,6 +42,16 @@ class SemrushReportTests(unittest.TestCase):
         self.assertEqual(rows[0]["volume"], 720)
         self.assertEqual(rows[0]["landing_page"], "https://example.com/")
 
+    def test_parses_related_keyword_difficulty_index_header(self):
+        body = (
+            "Keyword;Search Volume;CPC;Competition;Keyword Difficulty Index\n"
+            "apartments long beach;9900;0.59;0.72;55\n"
+        )
+        client = make_client()
+        with patch("modules.semrush.requests.get", return_value=FakeResponse(body)):
+            rows = client.get_keyword_ideas("apartments in long beach")
+        self.assertEqual(rows[0]["difficulty"], 55)
+
     def test_skips_malformed_rows(self):
         body = (
             "Keyword;Position;Search Volume;CPC;Competition;Keyword Difficulty;Url;Traffic (%)\n"

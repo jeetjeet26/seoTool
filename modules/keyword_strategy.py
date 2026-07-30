@@ -87,7 +87,9 @@ class KeywordCandidate:
 
 def seed_phrases(location: str, property_name: str = "") -> list[str]:
     """Location seed phrases used to pull related-keyword ideas."""
-    location = location.strip()
+    # Semrush has substantially better exact-keyword coverage for city-level
+    # phrases than long-form values such as "Long Beach, California".
+    location = location.split(",", 1)[0].strip()
     phrases = [
         f"apartments in {location}",
         f"apartments for rent {location}",
@@ -181,6 +183,7 @@ def build_keyword_strategy(
     property_name: str = "",
     rankings: list[dict] | None = None,
     related: list[dict] | None = None,
+    seed_metrics: dict[str, dict] | None = None,
     page_urls: list[str] | None = None,
     max_keywords: int = 60,
 ) -> list[dict]:
@@ -202,6 +205,10 @@ def build_keyword_strategy(
     }
 
     merged: dict[str, KeywordCandidate] = {}
+    normalized_seed_metrics = {
+        key.strip().lower(): value
+        for key, value in (seed_metrics or {}).items()
+    }
 
     for row in rankings or []:
         keyword = (row.get("keyword") or "").strip().lower()
@@ -240,10 +247,22 @@ def build_keyword_strategy(
     for phrase in seed_phrases(location, property_name):
         keyword = phrase.strip().lower()
         if keyword and keyword not in merged:
+            metrics = normalized_seed_metrics.get(keyword, {})
             merged[keyword] = KeywordCandidate(
                 keyword=keyword,
                 source="seed",
-                evidence={"seed": "location-template"},
+                volume=int(metrics.get("volume") or 0),
+                difficulty=float(
+                    metrics.get("difficulty") or metrics.get("kd") or 0
+                ),
+                evidence={
+                    "seed": "location-template",
+                    **(
+                        {"semrush_report": "phrase_this"}
+                        if metrics
+                        else {}
+                    ),
+                },
             )
 
     candidates = list(merged.values())

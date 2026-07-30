@@ -95,8 +95,10 @@ class ToolRunner:
         backlinks = self.semrush.get_backlinks_overview(domain)
 
         related: list[dict] = []
-        for phrase in seed_phrases(location, property_name)[:4]:
+        seeds = seed_phrases(location, property_name)
+        for phrase in seeds[:4]:
             related.extend(self.semrush.get_keyword_ideas(phrase, limit=20))
+        seed_metrics = self.semrush.get_keyword_data(seeds)
 
         self.repository.record_progress(run.id, "sitemap", 55, "Mapping landing pages")
         page_urls: list[str] = []
@@ -112,6 +114,7 @@ class ToolRunner:
             property_name=property_name,
             rankings=rankings,
             related=related,
+            seed_metrics=seed_metrics,
             page_urls=page_urls,
             max_keywords=int(options.get("max_keywords") or 60),
         )
