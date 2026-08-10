@@ -29,6 +29,28 @@ def write_csv(path, rows):
 
 
 class CrawlerTests(unittest.TestCase):
+    def test_uses_supported_configurable_threshold_filter_names(self):
+        crawler = Crawler()
+        captured = {}
+
+        def run(command, **_kwargs):
+            captured["command"] = command
+            output_dir = command[command.index("--output-folder") + 1]
+            write_csv(
+                Path(output_dir) / "internal_all.csv",
+                [{"Address": "https://example.com"}],
+            )
+            return subprocess.CompletedProcess(command, 0, "Finished", "")
+
+        with tempfile.TemporaryDirectory() as output:
+            with patch("modules.crawler.subprocess.run", side_effect=run):
+                crawler.run_crawl("https://example.com", output)
+        exports = captured["command"][captured["command"].index("--export-tabs") + 1]
+        self.assertIn("Images:Over X kB", exports)
+        self.assertIn("Page Titles:Over X Characters", exports)
+        self.assertIn("Meta Description:Over X Characters", exports)
+        self.assertNotIn("Images:Over 100 KB", exports)
+
     def test_exit_zero_with_fatal_output_raises_custom_error(self):
         crawler = Crawler()
         with tempfile.TemporaryDirectory() as output:

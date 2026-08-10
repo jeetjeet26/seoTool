@@ -78,7 +78,7 @@ class AuditService:
             "kind": "image",
         },
         {
-            "names": ("images_over_100_kb",),
+            "names": ("images_over_x_kb", "images_over_100_kb"),
             "category": "images",
             "severity": Severity.LOW,
             "issue_type": "image_over_100_kb",
@@ -122,7 +122,7 @@ class AuditService:
             "kind": "page",
         },
         {
-            "names": ("page_titles_over_60_characters",),
+            "names": ("page_titles_over_x_characters", "page_titles_over_60_characters"),
             "category": "metadata",
             "severity": Severity.MEDIUM,
             "issue_type": "long_title",
@@ -138,7 +138,10 @@ class AuditService:
             "kind": "page",
         },
         {
-            "names": ("meta_description_over_155_characters",),
+            "names": (
+                "meta_description_over_x_characters",
+                "meta_description_over_155_characters",
+            ),
             "category": "metadata",
             "severity": Severity.LOW,
             "issue_type": "long_meta_description",
