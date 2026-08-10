@@ -106,7 +106,7 @@ export interface AuditSummary {
   report_variant?: "full_client" | "in_house";
   fair_housing_enabled?: boolean;
   crawl_coverage?: {
-    mode?: "screaming_frog" | "browser_http_fallback";
+    mode?: "screaming_frog" | "screaming_frog_import" | "browser_http_fallback";
     screaming_frog?: "complete" | "blocked";
     attempted?: number;
     pages?: number;

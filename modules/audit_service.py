@@ -393,6 +393,56 @@ class AuditService:
         """Worker-friendly alias for run_audit."""
         return self.run_audit(audit_id, url, city, work_dir, **kwargs)
 
+    def run_from_exports(
+        self,
+        audit_id: str,
+        url: str,
+        city: str,
+        work_dir,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> AuditResult:
+        """Normalize previously uploaded Screaming Frog exports."""
+        callback = progress_callback or self.progress_callback
+        self._validate_inputs(audit_id, url, city, work_dir)
+        audit_dir = Path(work_dir).expanduser().resolve() / audit_id
+        crawl_dir = audit_dir / "crawl"
+        internal_export = crawl_dir / "internal_all.csv"
+        if not internal_export.is_file():
+            raise AuditInputError(
+                "The crawl import is missing internal_all.csv (Internal:All)."
+            )
+        self._emit(
+            callback,
+            audit_id,
+            AuditStage.CRAWL,
+            AuditStatus.COMPLETED,
+            65,
+            "Uploaded Screaming Frog exports loaded",
+        )
+        self._emit(
+            callback,
+            audit_id,
+            AuditStage.NORMALIZATION,
+            AuditStatus.RUNNING,
+            70,
+            "Normalizing uploaded exports",
+        )
+        findings = self.normalize_findings(crawl_dir)
+        self._emit(
+            callback,
+            audit_id,
+            AuditStage.NORMALIZATION,
+            AuditStatus.COMPLETED,
+            80,
+            f"Normalized {len(findings)} imported crawler findings",
+        )
+        return AuditResult(
+            audit_id=audit_id,
+            status=AuditStatus.RUNNING,
+            work_dir=str(audit_dir),
+            findings=findings,
+        )
+
     def normalize_findings(self, crawl_dir) -> List[Finding]:
         directory = Path(crawl_dir)
         if not directory.is_dir():

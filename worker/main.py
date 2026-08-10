@@ -81,13 +81,27 @@ def process_job(
 
     try:
         with heartbeat(repository, job.id):
-            result = service.run(
-                audit_id=job.id,
-                url=job.target_url,
-                city=job.location,
-                work_dir=audit_root,
-                finalize=False,
-            )
+            import_paths = list(job.options.get("crawl_import_paths") or [])
+            if import_paths:
+                artifacts.download_crawl_imports(
+                    job.id,
+                    import_paths,
+                    job_dir / "crawl",
+                )
+                result = service.run_from_exports(
+                    audit_id=job.id,
+                    url=job.target_url,
+                    city=job.location,
+                    work_dir=audit_root,
+                )
+            else:
+                result = service.run(
+                    audit_id=job.id,
+                    url=job.target_url,
+                    city=job.location,
+                    work_dir=audit_root,
+                    finalize=False,
+                )
             repository.record_progress(
                 ProgressEvent(
                     audit_id=job.id,
@@ -112,7 +126,7 @@ def process_job(
                 if (insight_data.get("crawl_coverage") or {}).get(
                     "mode", "screaming_frog"
                 )
-                == "screaming_frog"
+                in {"screaming_frog", "screaming_frog_import"}
                 else []
             )
             combined_findings = _deduplicate_findings(

@@ -91,7 +91,11 @@ class InsightRunner:
             )
         else:
             result["crawl_coverage"] = {
-                "mode": "screaming_frog",
+                "mode": (
+                    "screaming_frog_import"
+                    if job.options.get("crawl_import_paths")
+                    else "screaming_frog"
+                ),
                 "screaming_frog": "complete",
                 "pages": len(inventory.pages),
             }

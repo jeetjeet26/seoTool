@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { PageHeader, Status } from "@/components/app-shell";
 import { TaskReview } from "@/components/task-review";
+import { CrawlImport } from "@/components/crawl-import";
 import { RunAutoRefresh } from "@/components/tools/run-progress";
 import { data } from "@/lib/data";
 
@@ -28,6 +29,7 @@ export default async function AuditPage({ params }: { params: Promise<{ auditId:
       <section className="card"><div className="section-title"><div><h2>Scan summary</h2><p>Coverage collected in this run.</p></div></div><div className="summary-grid"><div><strong>{audit.pages}</strong><span>Pages crawled</span></div><div><strong>{audit.score ?? "—"}</strong><span>Health score</span></div><div><strong>{audit.summary?.finding_count ?? 0}</strong><span>Findings</span></div><div><strong>{audit.stage * 20}%</strong><span>Pipeline progress</span></div></div></section>
       <section className="card"><div className="section-title"><div><h2>Activity log</h2><p>Latest crawler events.</p></div></div>{events.length ? <div className="log-list">{events.map((event) => <p key={event.id}><time>{formatTime(event.createdAt)}</time>{event.message ?? event.eventType}</p>)}</div> : <div className="empty"><strong>No activity yet</strong><p>Worker events will appear after the audit is claimed.</p></div>}</section>
     </div>
+    {audit.status !== "queued" && audit.status !== "running" && <CrawlImport auditId={auditId}/>}
     <section className="card report-section"><div className="section-title"><div><h2>Client task list</h2><p>Choose exactly which approved tasks appear in the no-login client portal.</p></div></div><TaskReview auditId={auditId} tasks={tasks}/></section>
   </>;
 }

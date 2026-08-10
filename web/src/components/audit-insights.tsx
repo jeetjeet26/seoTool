@@ -77,13 +77,18 @@ function CrawlCoverage({ summary }: { summary: AuditSummary }) {
   const coverage = summary.crawl_coverage;
   if (!coverage) return null;
   const fallback = coverage.mode === "browser_http_fallback";
+  const imported = coverage.mode === "screaming_frog_import";
   return <section className={`card report-section${fallback ? " analysis-notice" : ""}`}>
-    <div className="section-title"><div><h2>Data source coverage</h2><p>{fallback
-      ? "Screaming Frog was blocked. This report uses browser-style page analysis plus the matching Semrush Site Audit."
-      : "Screaming Frog completed successfully; Semrush provides supplemental technical and search evidence."}</p></div></div>
+    <div className="section-title"><div><h2>Data source coverage</h2><p>{
+      fallback
+        ? "Screaming Frog was blocked. This report uses browser-style page analysis plus the matching Semrush Site Audit."
+        : imported
+          ? "This report uses locally generated Screaming Frog exports plus supplemental Semrush evidence."
+          : "Screaming Frog completed successfully; Semrush provides supplemental technical and search evidence."
+    }</p></div></div>
     <div className="insight-metrics">
-      <article><span>Screaming Frog</span><strong>{fallback ? "Blocked" : "Complete"}</strong></article>
-      <article><span>Page analysis</span><strong>{fallback ? "Browser fallback" : "Screaming Frog"}</strong></article>
+      <article><span>Screaming Frog</span><strong>{fallback ? "Blocked" : imported ? "Local import" : "Complete"}</strong></article>
+      <article><span>Page analysis</span><strong>{fallback ? "Browser fallback" : imported ? "Uploaded exports" : "Screaming Frog"}</strong></article>
       <article><span>Pages analyzed</span><strong>{formatNumber(coverage.pages)}</strong></article>
       <article><span>Semrush issues</span><strong>{summary.semrush_site_audit?.project_id ? "Included" : "Unavailable"}</strong></article>
     </div>
