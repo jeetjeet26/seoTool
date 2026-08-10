@@ -22,6 +22,7 @@ export async function queueAudit(
     formData.get("competitorDomains") ?? "",
   ).trim();
   const pageLimit = Number(formData.get("pageLimit"));
+  const reportVariant = String(formData.get("reportVariant") ?? "full_client");
 
   if (!clientName || !targetUrl || !targetCity) {
     return { error: "Client name, website URL, and city are required." };
@@ -51,6 +52,9 @@ export async function queueAudit(
   }
   if (!Number.isInteger(pageLimit) || pageLimit < 1 || pageLimit > 1000) {
     return { error: "Page limit must be between 1 and 1,000." };
+  }
+  if (!["full_client", "in_house"].includes(reportVariant)) {
+    return { error: "Choose a valid report variant." };
   }
 
   if (!isSupabaseConfigured) {
@@ -102,7 +106,10 @@ export async function queueAudit(
       page_limit: pageLimit,
       run_performance: formData.get("runPerformance") === "on",
       run_accessibility: formData.get("runAccessibility") === "on",
-      options: { competitor_domains: competitorDomains },
+      options: {
+        competitor_domains: competitorDomains,
+        report_variant: reportVariant,
+      },
       status: "queued",
       current_stage: "queued",
       requested_by: claimsData.claims.sub,

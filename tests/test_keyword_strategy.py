@@ -123,6 +123,53 @@ class KeywordStrategyTests(unittest.TestCase):
         self.assertFalse(
             is_relevant_keyword("park avenue", {"long", "beach"}, {"alexan"})
         )
+
+    def test_filters_competitor_brands_from_every_source(self):
+        results = build_keyword_strategy(
+            location="Dallas",
+            target_url="https://example.com/",
+            rankings=[
+                {
+                    "keyword": "camden apartments dallas",
+                    "volume": 500,
+                    "position": 10,
+                }
+            ],
+            related=[
+                {
+                    "keyword": "camden apartments for rent dallas",
+                    "volume": 300,
+                }
+            ],
+            competitor_terms=["camden"],
+        )
+        self.assertFalse(any("camden" in item["keyword"] for item in results))
+
+    def test_approved_target_keeps_its_page_and_precedes_new_ideas(self):
+        results = build_keyword_strategy(
+            location="Dallas",
+            target_url="https://example.com/",
+            approved_targets=[
+                {
+                    "keyword": "apartments in dallas",
+                    "canonical_url": "https://example.com/floor-plans/",
+                    "role": "primary",
+                    "metrics": {"volume": 1000, "difficulty": 40},
+                }
+            ],
+            related=[
+                {
+                    "keyword": "luxury apartments dallas",
+                    "volume": 5000,
+                    "difficulty": 20,
+                }
+            ],
+        )
+        self.assertEqual(results[0]["source"], "approved")
+        self.assertEqual(
+            results[0]["assigned_page"],
+            "https://example.com/floor-plans/",
+        )
         self.assertTrue(
             is_relevant_keyword(
                 "apartments for rent long beach",

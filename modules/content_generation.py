@@ -20,8 +20,18 @@ from modules.agent import SEOAgent
 
 TITLE_MAX = 60
 DESCRIPTION_MIN = 130
-DESCRIPTION_MAX = 160
+DESCRIPTION_MAX = 155
 DEFAULT_CHUNK_SIZE = 10
+DEFAULT_P11_STYLE_GUIDE = (
+    "Use approved P11 page-type patterns. Titles: maximum 60 characters; "
+    "prefer one spaced hyphen separator and never stack separators. "
+    "Home: [primary keyword] in [City, State] - [Brand]. "
+    "Floor plans: [property or bedroom keyword] in [City, State] - [Brand]. "
+    "Amenities: [property type] Amenities in [City, State] - [Brand]. "
+    "Gallery: Gallery - [property type] in [City, State]. "
+    "Descriptions: 130-155 characters, action-led, target keyword in the "
+    "first 100 characters, and a natural CTA."
+)
 
 ProgressCallback = Callable[[int, int], None]
 
@@ -65,10 +75,13 @@ class ContentGenerator:
         prompt = self._chunk_prompt(chunk, mode, client_context)
         system_prompt = (
             "You are an expert SEO copywriter. Match the site's industry, "
-            "audience, evidence, and existing brand voice. When writing about "
-            "housing, apply these Fair Housing safeguards:\n"
-            f"{self.agent.FAIR_HOUSING_GUIDELINES}"
+            "audience, evidence, approved style guide, and existing brand voice."
         )
+        if client_context.get("fair_housing_enabled"):
+            system_prompt += (
+                "\nWhen writing about housing, apply these Fair Housing safeguards:\n"
+                f"{self.agent.FAIR_HOUSING_GUIDELINES}"
+            )
 
         parsed: list[dict] | None = None
         for _attempt in range(2):
@@ -91,6 +104,13 @@ class ContentGenerator:
         ]
 
     def _chunk_prompt(self, chunk: list[dict], mode: str, client_context: dict) -> str:
+        client_context = {
+            **client_context,
+            "title_style_guide": (
+                client_context.get("title_style_guide")
+                or DEFAULT_P11_STYLE_GUIDE
+            ),
+        }
         lines = []
         for position, page in enumerate(chunk):
             keywords = ", ".join(page.get("keywords") or [])
@@ -108,7 +128,15 @@ class ContentGenerator:
         pages_text = "\n".join(lines)
 
         context_lines = []
-        for key in ("name", "differentiators", "amenities", "avoided_terms"):
+        for key in (
+            "name",
+            "location",
+            "vertical",
+            "differentiators",
+            "amenities",
+            "avoided_terms",
+            "title_style_guide",
+        ):
             value = client_context.get(key)
             if value:
                 context_lines.append(f"- {key.replace('_', ' ').title()}: {value}")
@@ -123,12 +151,15 @@ class ContentGenerator:
         else:
             task = (
                 "These pages belong to a live website. Propose an improved title, "
-                "meta description, and H1 for every page, weaving in the target "
-                "keywords while staying truthful to the current content. "
+                "meta description, or H1 only where the current value is missing, "
+                "duplicated, off-target, or violates the approved style guide. "
+                "Otherwise return the current value unchanged. "
                 "Analyze the supplied visible body copy for search intent, topical "
                 "depth, clarity, and keyword alignment. Include a specific 2-3 "
-                "sentence replacement or addition in the content field when copy "
-                "is thin, generic, missing, or fails to serve the target query. "
+                "sentence replacement or addition in the content field only when "
+                "copy is thin, generic, missing, or fails to serve an approved "
+                "target query. Preserve roughly 80% of the original passage and "
+                "make the smallest useful keyword change. "
                 "Return an empty content field only when the current body copy "
                 "already serves the target query well."
             )
@@ -138,8 +169,10 @@ class ContentGenerator:
 Rules:
 - Titles must be at most {TITLE_MAX} characters.
 - Meta descriptions must be {DESCRIPTION_MIN}-{DESCRIPTION_MAX} characters.
+- Use one spaced hyphen as the preferred title separator. Never use em/en dashes, curly quotes, ellipses, or stacked separators.
+- Do not introduce a keyword that is not assigned to the page.
 - Use only facts from the approved client context below. Never invent amenities, prices, or availability.
-- All copy must be Fair Housing Act compliant.
+{"- All copy must follow the supplied Fair Housing safeguards." if client_context.get("fair_housing_enabled") else ""}
 
 Approved client context (use only these facts):
 {context_text}
@@ -173,6 +206,8 @@ Return ONLY a JSON array. One object per page with keys:
             "meta_description_length": len(proposed_description),
             "warnings": validate_metadata(proposed_title, proposed_description),
         }
+        if result["proposed_content"]:
+            result["current_body_text"] = _clean(page.get("body_text"))
         if error:
             result["error"] = error
         return result
@@ -214,6 +249,7 @@ Return ONLY a JSON array. One object per page with keys:
         self,
         images: Iterable[dict],
         on_progress: ProgressCallback | None = None,
+        fair_housing_enabled: bool = False,
     ) -> list[dict]:
         """Alt-text proposals; each image dict needs image_url and page_url."""
         items = [
@@ -226,7 +262,10 @@ Return ONLY a JSON array. One object per page with keys:
         ]
         if not items:
             return []
-        processed = self.agent.generate_alt_text_batch(items)
+        processed = self.agent.generate_alt_text_batch(
+            items,
+            fair_housing_enabled=fair_housing_enabled,
+        )
         results = []
         total = len(processed)
         for position, item in enumerate(processed):
@@ -253,7 +292,7 @@ def validate_metadata(title: str, description: str) -> list[str]:
     if title and len(title) > TITLE_MAX:
         warnings.append("title_over_60")
     if description and len(description) > DESCRIPTION_MAX:
-        warnings.append("description_over_160")
+        warnings.append("description_over_155")
     if description and len(description) < DESCRIPTION_MIN:
         warnings.append("description_under_130")
     return warnings
@@ -275,4 +314,20 @@ def _parse_json_array(response: str) -> list[dict] | None:
 
 
 def _clean(value) -> str:
-    return str(value).strip() if value is not None else ""
+    if value is None:
+        return ""
+    text = str(value)
+    replacements = {
+        "\ufeff": "",
+        "\u2014": " - ",
+        "\u2013": " - ",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2026": "...",
+        "\u2192": " - ",
+    }
+    for source, replacement in replacements.items():
+        text = text.replace(source, replacement)
+    return " ".join(text.split()).strip()

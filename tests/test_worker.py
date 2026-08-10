@@ -76,6 +76,7 @@ class FakeInsights:
         return {
             "semrush": {"organic_keywords": 12},
             "keyword_metrics": {},
+            "site_inventory": {"page_count": 1},
             "content_recommendations": [],
             "page_experience": [],
             "enrichment_errors": [],

@@ -1,5 +1,6 @@
 import re
 import time
+from urllib.parse import urlsplit
 
 import requests
 
@@ -8,6 +9,8 @@ from config import Config
 class SemrushClient:
     BASE_URL = "https://api.semrush.com/"
     BACKLINKS_OVERVIEW_URL = "https://api.semrush.com/analytics/v1/"
+    PROJECTS_URL = "https://api.semrush.com/management/v1/projects"
+    PROJECT_REPORTS_URL = "https://api.semrush.com/reports/v1/projects"
 
     def __init__(self):
         self.api_key = Config.SEMRUSH_API_KEY
@@ -262,6 +265,155 @@ class SemrushClient:
             if row.get("Keyword")
         ]
 
+    def get_site_audit(
+        self,
+        target_url: str,
+        preferred_project_id: str = "",
+    ) -> dict:
+        """Return the latest matching Semrush Site Audit and all scoped issues."""
+        if not self.api_key:
+            return {}
+        hostname = _normalize_domain(urlsplit(target_url).hostname or "")
+        project = self._find_project(hostname, preferred_project_id)
+        if not project:
+            return {}
+        project_id = str(project["project_id"])
+        info = self._project_json(
+            f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/info"
+        )
+        snapshot = info.get("current_snapshot") or {}
+        snapshot_id = snapshot.get("snapshot_id")
+        if not snapshot_id:
+            return {}
+        issue_meta = self._project_json(
+            f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/meta/issues"
+        ).get("issues", [])
+        meta_by_id = {
+            int(item["id"]): item
+            for item in issue_meta
+            if item.get("id") is not None
+        }
+
+        findings = []
+        issue_totals = {"errors": 0, "warnings": 0, "notices": 0}
+        for level in ("errors", "warnings", "notices"):
+            for issue in snapshot.get(level, []):
+                count = _to_int(issue.get("count"))
+                if count <= 0:
+                    continue
+                issue_id = _to_int(issue.get("id"))
+                rows = self._site_audit_issue_rows(
+                    project_id,
+                    str(snapshot_id),
+                    issue_id,
+                )
+                scoped_rows = [
+                    row
+                    for row in rows
+                    if _url_in_scope(
+                        row.get("source_url") or row.get("target_url") or "",
+                        target_url,
+                    )
+                ]
+                if not scoped_rows and _is_root_scope(target_url, hostname):
+                    scoped_rows = rows
+                if not scoped_rows:
+                    continue
+                issue_totals[level] += len(scoped_rows)
+                meta = meta_by_id.get(issue_id, {})
+                findings.extend(
+                    {
+                        "issue_id": issue_id,
+                        "level": level[:-1],
+                        "title": meta.get("title") or f"Semrush issue {issue_id}",
+                        "description": meta.get("title_page") or "",
+                        "page_url": row.get("source_url") or row.get("target_url") or "",
+                        "resource_url": (
+                            row.get("target_url")
+                            if row.get("source_url")
+                            and row.get("target_url") != row.get("source_url")
+                            else ""
+                        ),
+                        "details": row,
+                    }
+                    for row in scoped_rows
+                )
+
+        return {
+            "project_id": int(project_id),
+            "project_name": project.get("project_name", ""),
+            "domain": project.get("domain_unicode") or project.get("url") or hostname,
+            "snapshot_id": snapshot_id,
+            "pages_crawled": snapshot.get("pages_crawled", info.get("pages_crawled", 0)),
+            "site_health": (snapshot.get("quality") or {}).get("value"),
+            "errors": issue_totals["errors"],
+            "warnings": issue_totals["warnings"],
+            "notices": issue_totals["notices"],
+            "thematic_scores": snapshot.get("thematicScores") or {},
+            "findings": findings,
+        }
+
+    def _find_project(self, hostname: str, preferred_project_id: str) -> dict:
+        projects = self._project_json(self.PROJECTS_URL)
+        if not isinstance(projects, list):
+            return {}
+        if preferred_project_id:
+            preferred = next(
+                (
+                    item
+                    for item in projects
+                    if str(item.get("project_id")) == str(preferred_project_id)
+                ),
+                None,
+            )
+            if preferred:
+                return preferred
+        matches = [
+            item
+            for item in projects
+            if _normalize_domain(
+                item.get("domain_unicode") or item.get("url") or ""
+            )
+            == hostname
+        ]
+        return matches[0] if matches else {}
+
+    def _project_json(self, url: str) -> dict | list:
+        try:
+            response = requests.get(
+                url,
+                params={"key": self.api_key},
+                timeout=60,
+            )
+            response.raise_for_status()
+            return response.json()
+        except (requests.exceptions.RequestException, ValueError) as exc:
+            self._diagnostic(f"Semrush project request failed: {exc}")
+            return {}
+
+    def _site_audit_issue_rows(
+        self,
+        project_id: str,
+        snapshot_id: str,
+        issue_id: int,
+    ) -> list[dict]:
+        rows: list[dict] = []
+        page = 1
+        while True:
+            payload = self._project_json(
+                f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/"
+                f"snapshot/{snapshot_id}/issue/{issue_id}"
+                f"?page={page}&limit=1000"
+            )
+            if not isinstance(payload, dict):
+                break
+            batch = payload.get("data") or []
+            rows.extend(item for item in batch if isinstance(item, dict))
+            if len(rows) >= _to_int(payload.get("total")) or not batch:
+                break
+            page += 1
+        return rows
+
 
 def _to_int(value) -> int:
     try:
@@ -282,6 +434,37 @@ def _keyword_difficulty(row: dict) -> float:
     return _to_float(
         row.get("Keyword Difficulty")
         or row.get("Keyword Difficulty Index")
+    )
+
+
+def _normalize_domain(value: str) -> str:
+    return value.strip().lower().removeprefix("www.").rstrip(".")
+
+
+def _url_in_scope(candidate: str, target_url: str) -> bool:
+    if not candidate:
+        return False
+    try:
+        candidate_parts = urlsplit(candidate)
+        target_parts = urlsplit(target_url)
+    except ValueError:
+        return False
+    if _normalize_domain(candidate_parts.hostname or "") != _normalize_domain(
+        target_parts.hostname or ""
+    ):
+        return False
+    target_path = target_parts.path.rstrip("/") or "/"
+    candidate_path = candidate_parts.path.rstrip("/") or "/"
+    return target_path == "/" or candidate_path == target_path or candidate_path.startswith(
+        f"{target_path}/"
+    )
+
+
+def _is_root_scope(target_url: str, hostname: str) -> bool:
+    parts = urlsplit(target_url)
+    return (
+        _normalize_domain(parts.hostname or "") == hostname
+        and (parts.path.rstrip("/") or "/") == "/"
     )
 
 

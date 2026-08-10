@@ -60,7 +60,7 @@ class Crawler:
             "--headless",
             "--save-crawl",
             "--output-folder", output_dir,
-            "--export-tabs", "Internal:All,Response Codes:Client Error (4xx),Response Codes:Redirection (3xx),Images:Missing Alt Text,Images:Missing Alt Attribute,Page Titles:Missing,Page Titles:Below X Characters,Meta Description:Missing,H1:Missing,H1:Multiple,H2:Multiple,Canonicals:Missing,Security:Missing HSTS Header,Security:Missing X-Frame-Options Header,Security:Missing X-Content-Type-Options Header,Security:Missing Secure Referrer-Policy Header,Security:Missing Content-Security-Policy Header"
+            "--export-tabs", "Internal:All,Response Codes:Client Error (4xx),Response Codes:Server Error (5xx),Response Codes:No Response,Response Codes:Redirection (3xx),Images:Missing Alt Text,Images:Missing Alt Attribute,Images:Over 100 KB,Page Titles:Missing,Page Titles:Duplicate,Page Titles:Below X Characters,Page Titles:Over 60 Characters,Meta Description:Missing,Meta Description:Duplicate,Meta Description:Over 155 Characters,H1:Missing,H1:Multiple,H1:Duplicate,H2:Missing,H2:Multiple,Canonicals:Missing,Canonicals:Multiple,Canonicals:Canonicalised,Directives:Noindex,Content:Low Content Pages,Content:Exact Duplicates,Security:Missing HSTS Header,Security:Missing X-Frame-Options Header,Security:Missing X-Content-Type-Options Header,Security:Missing Secure Referrer-Policy Header,Security:Missing Content-Security-Policy Header,Security:Mixed Content"
         ]
 
         try:
@@ -81,7 +81,7 @@ class Crawler:
                 # Match the FATAL log level only, e.g. "[main] FATAL - ...".
                 # SF also prints an INFO line "Fatal Log File: ..." on healthy
                 # runs, which must not be treated as an error.
-                if re.search(r"\bFATAL\s+-\s", line)
+                if re.search(r"\bFATAL\s+-\s|^FATAL:", line.strip())
             ]
 
             if result.returncode != 0 or fatal_lines or not os.path.isfile(internal_export):

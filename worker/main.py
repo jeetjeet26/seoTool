@@ -94,10 +94,22 @@ def process_job(
                     stage=AuditStage.ENRICHMENT,
                     status=AuditStatus.RUNNING,
                     progress=82,
-                    message="Market, content, performance, and accessibility analysis started",
+                    message="Market, content, and technical enrichment started",
                 )
             )
             insight_data = insight_runner.run(job, job_dir / "crawl")
+            valid_pages = int(
+                (insight_data.get("site_inventory") or {}).get("page_count") or 0
+            )
+            if valid_pages <= 0:
+                raise RuntimeError(
+                    "Crawl blocked or incomplete: no valid indexable HTML pages "
+                    "were available for analysis."
+                )
+            semrush_findings = insight_data.pop("_semrush_findings", [])
+            combined_findings = _deduplicate_findings(
+                [*result.findings, *semrush_findings]
+            )
             repository.record_progress(
                 ProgressEvent(
                     audit_id=job.id,
@@ -112,7 +124,7 @@ def process_job(
                     },
                 )
             )
-            finding_count = repository.upsert_findings(job.id, result.findings)
+            finding_count = repository.upsert_findings(job.id, combined_findings)
             repository.record_progress(
                 ProgressEvent(
                     audit_id=job.id,
@@ -124,9 +136,11 @@ def process_job(
             )
 
             severity_counts = Counter(
-                finding.severity.value for finding in result.findings
+                finding.severity.value for finding in combined_findings
             )
-            category_counts = Counter(finding.category for finding in result.findings)
+            category_counts = Counter(
+                finding.category for finding in combined_findings
+            )
             pages_scanned = _count_csv_rows(job_dir / "crawl" / "internal_all.csv")
             score = _health_score(severity_counts, pages_scanned)
             summary = {
@@ -144,7 +158,7 @@ def process_job(
             }
             report_paths = generate_report_exports(
                 job.id,
-                result.findings,
+                combined_findings,
                 summary,
                 job_dir / "reports",
             )
@@ -273,6 +287,22 @@ def _health_score(severity_counts: Counter, pages_scanned: int) -> int:
     )
     scale = max(1, pages_scanned / 10)
     return max(0, min(100, round(100 - penalty / scale)))
+
+
+def _deduplicate_findings(findings):
+    seen = set()
+    result = []
+    for finding in findings:
+        key = (
+            finding.issue_type,
+            finding.page_url.rstrip("/"),
+            finding.resource_url.rstrip("/"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(finding)
+    return result
 
 
 if __name__ == "__main__":

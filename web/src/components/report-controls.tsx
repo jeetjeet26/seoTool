@@ -52,7 +52,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
     }
   }
   async function toggleUrl(groupKey: string, occurrence: UrlOccurrence) {
-    const pendingKey = `${groupKey}:${occurrence.url}`;
+    const pendingKey = `${groupKey}:${occurrence.key}`;
     const nextStatus: Finding["status"] = occurrence.resolved ? "open" : "resolved";
     const previousStatuses = new Map(statusById);
     setUpdatingUrls((current) => new Set(current).add(pendingKey));
@@ -116,7 +116,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
                 <summary>{item.resolvedCount}/{item.occurrences} fixed · View affected URLs</summary>
                 <div className="finding-url-list">
                   {item.urls.map((occurrence) => {
-                    const pendingKey = `${item.key}:${occurrence.url}`;
+                    const pendingKey = `${item.key}:${occurrence.key}`;
                     return <div key={occurrence.key} className={`finding-url-item${occurrence.resolved ? " resolved" : ""}`}>
                       <input
                         type="checkbox"
@@ -126,7 +126,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
                         aria-label={`Mark ${occurrence.url || "unreported URL"} ${occurrence.resolved ? "open" : "fixed"}`}
                       />
                       {occurrence.url
-                        ? <a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>
+                        ? <span><a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>{occurrence.resourceUrl && occurrence.resourceUrl !== occurrence.url && <small>Resource: <a href={occurrence.resourceUrl} target="_blank" rel="noreferrer">{occurrence.resourceUrl.replace(/^https?:\/\//, "")}</a></small>}</span>
                         : <span>URL not reported</span>}
                     </div>;
                   })}
@@ -143,6 +143,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
 type UrlOccurrence = {
   key: string;
   url: string;
+  resourceUrl: string;
   findingIds: string[];
   resolved: boolean;
 };
@@ -169,8 +170,7 @@ function groupFindings(
       representative: finding,
       urls: new Map<string, Finding[]>(),
     };
-    const affectedUrl = finding.resourceUrl || finding.pageUrl;
-    const urlKey = affectedUrl || `unreported:${finding.id}`;
+    const urlKey = `${finding.pageUrl}\u0000${finding.resourceUrl ?? ""}` || `unreported:${finding.id}`;
     group.urls.set(urlKey, [...(group.urls.get(urlKey) ?? []), finding]);
     groups.set(groupKey, group);
   }
@@ -178,7 +178,8 @@ function groupFindings(
   return [...groups.entries()].map(([key, group]) => {
     const urls = [...group.urls.entries()].map(([urlKey, members]) => ({
       key: urlKey,
-      url: members[0]?.resourceUrl || members[0]?.pageUrl || "",
+      url: members[0]?.pageUrl || members[0]?.resourceUrl || "",
+      resourceUrl: members[0]?.resourceUrl || "",
       findingIds: members.map((member) => member.id),
       resolved: members.every((member) => statusById.get(member.id) === "resolved"),
     }));

@@ -7,6 +7,8 @@ hard-coded phrases.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -14,6 +16,7 @@ from urllib.parse import urlsplit
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
 from modules.keyword_strategy import build_keyword_strategy, seed_phrases
+from modules.models import Finding, Severity
 from modules.page_content import fetch_body_copy_for_pages
 from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
@@ -41,6 +44,7 @@ class InsightRunner:
     def run(self, job: AuditJob, crawl_dir: Path) -> dict:
         result = {
             "semrush": {},
+            "semrush_site_audit": {},
             "competitors": [],
             "backlinks": {},
             "keyword_metrics": {},
@@ -58,6 +62,31 @@ class InsightRunner:
         )
         result["site_inventory"] = inventory.summary()
         pages = inventory.pages
+        intake = job.client_intake
+        property_name = (
+            str(intake.get("property_name") or "").strip()
+            or job.client_name
+        )
+        vertical = str(intake.get("vertical") or "multifamily")
+        target_markets = _list_values(intake.get("target_markets"))
+        excluded_terms = _list_values(intake.get("avoided_terms"))
+        competitor_terms = _competitor_terms(
+            [
+                *job.options.get("competitor_domains", []),
+                *_list_values(intake.get("competitors")),
+            ]
+        )
+        result["property_context"] = {
+            "name": property_name,
+            "location": job.location,
+            "vertical": vertical,
+            "address": (intake.get("nap") or {}).get("address", ""),
+            "website": job.target_url,
+        }
+        result["report_variant"] = job.options.get("report_variant", "full_client")
+        result["fair_housing_enabled"] = bool(
+            intake.get("fair_housing_enabled", False)
+        )
 
         domain = urlsplit(job.target_url).hostname or ""
         rankings: list[dict] = []
@@ -73,7 +102,25 @@ class InsightRunner:
                 job.options.get("competitor_domains") or [],
             )
             result["backlinks"] = self.semrush.get_backlinks_overview(domain)
-            audit_seeds = seed_phrases(job.location)
+            site_audit = self.semrush.get_site_audit(
+                job.target_url,
+                str(intake.get("semrush_project_id") or ""),
+            )
+            if site_audit:
+                raw_site_findings = site_audit.pop("findings", [])
+                result["semrush_site_audit"] = site_audit
+                result["_semrush_findings"] = _semrush_findings(raw_site_findings)
+            else:
+                result["enrichment_errors"].append(
+                    {
+                        "service": "semrush_site_audit",
+                        "message": (
+                            "No completed Semrush Site Audit project matched this "
+                            "client domain. Organic research is still available."
+                        ),
+                    }
+                )
+            audit_seeds = seed_phrases(job.location, property_name, vertical)
             for phrase in audit_seeds[:3]:
                 related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
             seed_metrics = self.semrush.get_keyword_data(audit_seeds)
@@ -91,9 +138,15 @@ class InsightRunner:
         keywords = build_keyword_strategy(
             location=job.location,
             target_url=job.target_url,
+            property_name=property_name,
             rankings=rankings,
             related=related,
             seed_metrics=seed_metrics,
+            approved_targets=list(job.approved_keyword_targets),
+            property_terms=_property_terms(vertical, target_markets),
+            excluded_terms=excluded_terms,
+            competitor_terms=competitor_terms,
+            vertical=vertical,
             page_urls=[page.url for page in pages],
             max_keywords=40,
         )
@@ -106,13 +159,21 @@ class InsightRunner:
             for candidate in keywords[:10]
         }
 
+        approved_keywords = [
+            candidate for candidate in keywords if candidate.get("source") == "approved"
+        ]
+        targeting_pool = approved_keywords or keywords
         keywords_by_page: dict[str, list[str]] = {}
-        for candidate in keywords:
+        for candidate in targeting_pool:
             assigned = candidate.get("assigned_page") or job.target_url
             keywords_by_page.setdefault(assigned, [])
             if len(keywords_by_page[assigned]) < 3:
                 keywords_by_page[assigned].append(candidate["keyword"])
-        default_keywords = [candidate["keyword"] for candidate in keywords[:3]]
+        default_keywords = (
+            []
+            if approved_keywords
+            else [candidate["keyword"] for candidate in keywords[:3]]
+        )
 
         selected_pages = pages[:MAX_GENERATION_PAGES]
         body_copy, body_copy_errors = fetch_body_copy_for_pages(
@@ -152,12 +213,32 @@ class InsightRunner:
         ]
         if generation_pages:
             try:
-                result["content_recommendations"] = [
+                generated_recommendations = [
                     {**item, "requires_human_review": True}
                     for item in self.generator.generate_bulk_metadata(
-                        generation_pages, mode="existing"
+                        generation_pages,
+                        mode="existing",
+                        client_context={
+                            "name": property_name,
+                            "location": job.location,
+                            "vertical": vertical,
+                            "differentiators": intake.get("differentiators", ""),
+                            "amenities": intake.get("amenities", ""),
+                            "avoided_terms": intake.get("avoided_terms", ""),
+                            "title_style_guide": intake.get("title_style_guide", ""),
+                            "fair_housing_enabled": bool(
+                                intake.get("fair_housing_enabled", False)
+                            ),
+                            "report_variant": job.options.get(
+                                "report_variant", "full_client"
+                            ),
+                        },
                     )
                 ]
+                result["content_recommendations"] = _limit_content_recommendations(
+                    generated_recommendations,
+                    job.options.get("report_variant", "full_client"),
+                )
             except Exception as exc:  # noqa: BLE001
                 result["enrichment_errors"].append(_safe_error("anthropic", exc))
 
@@ -168,7 +249,10 @@ class InsightRunner:
         if images:
             try:
                 result["alt_text_recommendations"] = self.generator.generate_alt_text(
-                    images
+                    images,
+                    fair_housing_enabled=bool(
+                        intake.get("fair_housing_enabled", False)
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001
                 result["enrichment_errors"].append(_safe_error("anthropic", exc))
@@ -253,3 +337,160 @@ def _merge_competitors(
 
 def _normalize_domain(value: str) -> str:
     return value.strip().lower().removeprefix("www.")
+
+
+def _list_values(value) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [
+        item.strip()
+        for item in re.split(r"[\n,;]+", str(value or ""))
+        if item.strip()
+    ]
+
+
+def _competitor_terms(values: list[str]) -> list[str]:
+    terms: set[str] = set()
+    for value in values:
+        lowered = value.strip().lower()
+        if not lowered:
+            continue
+        terms.add(lowered)
+        domain = _normalize_domain(urlsplit(
+            lowered if "://" in lowered else f"https://{lowered}"
+        ).hostname or "")
+        if domain:
+            brand = domain.split(".", 1)[0].replace("-", " ")
+            if len(brand) > 2:
+                terms.add(brand)
+    return sorted(terms)
+
+
+def _property_terms(vertical: str, target_markets: list[str]) -> list[str]:
+    by_vertical = {
+        "multifamily": [
+            "apartment", "apartments", "rent", "rental", "rentals",
+            "studio", "bedroom", "bedrooms", "townhome", "townhomes",
+        ],
+        "new_homes": [
+            "home", "homes", "house", "houses", "townhome", "townhomes",
+            "condo", "condominiums", "construction", "builder",
+        ],
+        "senior_housing": [
+            "senior", "55 plus", "55+", "active adult", "apartment",
+            "apartments", "community", "communities",
+        ],
+        "corporate": [],
+        "other": [],
+    }
+    return [*by_vertical.get(vertical, []), *target_markets]
+
+
+def _limit_content_recommendations(
+    recommendations: list[dict],
+    report_variant: str,
+) -> list[dict]:
+    if report_variant == "in_house":
+        return [
+            {**item, "proposed_content": "", "current_body_text": ""}
+            for item in recommendations
+        ]
+
+    content_candidates = sorted(
+        (
+            item
+            for item in recommendations
+            if item.get("proposed_content")
+        ),
+        key=lambda item: (
+            int(item.get("current_body_word_count") or 0),
+            item.get("url", ""),
+        ),
+    )
+    selected_urls = {item.get("url") for item in content_candidates[:7]}
+    return [
+        item
+        if item.get("url") in selected_urls
+        else {**item, "proposed_content": "", "current_body_text": ""}
+        for item in recommendations
+    ]
+
+
+_SEMRUSH_RULE_MAP = {
+    2: ("response_codes", "client_error_4xx"),
+    3: ("metadata", "missing_title"),
+    103: ("headings", "missing_h1"),
+    104: ("headings", "multiple_h1"),
+    106: ("metadata", "missing_meta_description"),
+    109: ("response_codes", "redirection_3xx"),
+    110: ("images", "missing_alt_attribute"),
+    214: ("response_codes", "redirection_3xx"),
+}
+
+
+def _semrush_findings(rows: list[dict]) -> list[Finding]:
+    findings = []
+    for row in rows:
+        issue_id = int(row.get("issue_id") or 0)
+        title = str(row.get("title") or f"Semrush issue {issue_id}")
+        category, issue_type = _SEMRUSH_RULE_MAP.get(
+            issue_id,
+            (_semrush_category(title), f"semrush_site_audit_{issue_id}"),
+        )
+        page_url = str(row.get("page_url") or "")
+        resource_url = str(row.get("resource_url") or "")
+        evidence = json.dumps(
+            {
+                "issue": issue_type,
+                "semrush_issue_id": issue_id,
+                "details": row.get("details") or {},
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        identity = "\x1f".join(
+            (category, issue_type, page_url, resource_url, evidence)
+        )
+        severity = {
+            "error": Severity.HIGH,
+            "warning": Severity.MEDIUM,
+            "notice": Severity.INFO,
+        }.get(row.get("level"), Severity.INFO)
+        findings.append(
+            Finding(
+                id=hashlib.sha256(identity.encode("utf-8")).hexdigest(),
+                category=category,
+                severity=severity,
+                issue_type=issue_type,
+                page_url=page_url,
+                resource_url=resource_url,
+                evidence=evidence,
+                recommendation=f"Review and resolve the Semrush Site Audit issue: {title}.",
+                source_file="semrush_site_audit",
+                metadata={
+                    "source": "semrush",
+                    "semrush_issue_id": issue_id,
+                    "semrush_title": title,
+                    "semrush_description": row.get("description", ""),
+                    "semrush_row": row.get("details") or {},
+                },
+            )
+        )
+    return findings
+
+
+def _semrush_category(title: str) -> str:
+    lowered = title.lower()
+    if any(term in lowered for term in ("title", "meta description")):
+        return "metadata"
+    if any(term in lowered for term in ("h1", "content", "word count")):
+        return "content"
+    if any(term in lowered for term in ("link", "redirect", "4xx", "5xx")):
+        return "links"
+    if any(term in lowered for term in ("image", "alt")):
+        return "images"
+    if any(term in lowered for term in ("https", "hsts", "certificate", "security")):
+        return "security"
+    if "canonical" in lowered:
+        return "canonicalization"
+    return "crawlability"

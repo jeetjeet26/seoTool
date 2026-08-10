@@ -116,7 +116,7 @@ class CsvProfileTests(unittest.TestCase):
 class ClientWorkbookTests(unittest.TestCase):
     def test_only_populated_sheets_are_generated(self):
         workbook = build_client_workbook("Test Property")
-        self.assertEqual(workbook.sheetnames, ["Introduction", "Glossary"])
+        self.assertEqual(workbook.sheetnames, ["Introduction"])
         # No hidden sheets ever.
         self.assertTrue(
             all(workbook[name].sheet_state == "visible" for name in workbook.sheetnames)
@@ -167,11 +167,7 @@ class ClientWorkbookTests(unittest.TestCase):
             "Description Tags",
             "H1 Tags",
             "On-Page SEO",
-            "Alt Text",
             "Technical SEO",
-            "Page Speed",
-            "Program Recap",
-            "Glossary",
         ]
         self.assertEqual(workbook.sheetnames, expected)
 
@@ -179,7 +175,7 @@ class ClientWorkbookTests(unittest.TestCase):
         self.assertEqual(intro["A1"].value, "Test Property")
         toc_values = [intro.cell(row=row, column=2).value for row in range(4, 15)]
         self.assertIn("Keyword Research", toc_values)
-        self.assertIn("Glossary", toc_values)
+        self.assertIn("Technical SEO", toc_values)
 
         titles = workbook["Title Tags"]
         self.assertEqual(titles.cell(row=5, column=1).value, "URL")
@@ -193,6 +189,23 @@ class ClientWorkbookTests(unittest.TestCase):
         self.assertEqual(
             technical.cell(row=6, column=5).hyperlink.target,
             "https://example.com/missing",
+        )
+
+    def test_in_house_workbook_uses_condensed_treatment(self):
+        workbook = build_client_workbook(
+            "Test Property",
+            keywords=[{"keyword": "apartments dallas"}],
+            metadata_items=[CsvProfileTests.ITEM],
+            technical_rows=[{"category": "links", "issue": "Broken link"}],
+            report_variant="in_house",
+        )
+        self.assertEqual(
+            workbook.sheetnames,
+            ["Keyword Research", "SEO Treatment", "Technical SEO"],
+        )
+        self.assertEqual(
+            workbook["SEO Treatment"].cell(row=6, column=1).value,
+            CsvProfileTests.ITEM["url"],
         )
 
     def test_workbook_saves_and_reloads(self):

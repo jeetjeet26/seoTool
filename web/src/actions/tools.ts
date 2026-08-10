@@ -303,6 +303,13 @@ export async function saveClientIntake(formData: FormData): Promise<void> {
     renovations: String(formData.get("renovations") ?? "").trim(),
     events_partnerships: String(formData.get("eventsPartnerships") ?? "").trim(),
     content_plans: String(formData.get("contentPlans") ?? "").trim(),
+    property_name: String(formData.get("propertyName") ?? "").trim(),
+    vertical: String(formData.get("vertical") ?? "").trim(),
+    title_style_guide: String(formData.get("titleStyleGuide") ?? "").trim(),
+    fair_housing_enabled: formData.get("fairHousingEnabled") === "on",
+    semrush_project_id: String(formData.get("semrushProjectId") ?? "")
+      .trim()
+      .replace(/\D/g, ""),
     nap: {
       name: String(formData.get("napName") ?? "").trim(),
       address: String(formData.get("napAddress") ?? "").trim(),

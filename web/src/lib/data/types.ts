@@ -16,6 +16,7 @@ export interface ContentRecommendation {
   proposed_h1?: string;
   proposed_meta_description?: string;
   proposed_content?: string;
+  current_body_text?: string;
   rationale?: string;
   current_body_word_count?: number;
   requires_human_review?: boolean;
@@ -31,7 +32,7 @@ export interface PageExperience {
 
 export interface KeywordStrategyItem {
   keyword: string;
-  source: "ranking" | "related" | "seed";
+  source: "approved" | "ranking" | "related" | "seed";
   volume: number;
   cpc: number;
   difficulty: number;
@@ -83,6 +84,26 @@ export interface AuditSummary {
   target_url?: string;
   target_location?: string;
   semrush?: Record<string, unknown>;
+  semrush_site_audit?: {
+    project_id?: number;
+    project_name?: string;
+    domain?: string;
+    pages_crawled?: number;
+    site_health?: number;
+    errors?: number;
+    warnings?: number;
+    notices?: number;
+    thematic_scores?: Record<string, { value?: number; delta?: number }>;
+  };
+  property_context?: {
+    name?: string;
+    location?: string;
+    vertical?: string;
+    address?: string;
+    website?: string;
+  };
+  report_variant?: "full_client" | "in_house";
+  fair_housing_enabled?: boolean;
   competitors?: CompetitorMetric[];
   backlinks?: Record<string, number>;
   keyword_strategy?: KeywordStrategyItem[];

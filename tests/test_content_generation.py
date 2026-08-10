@@ -34,7 +34,7 @@ class FakeAgent:
             ]
         )
 
-    def generate_alt_text_batch(self, items):
+    def generate_alt_text_batch(self, items, fair_housing_enabled=False):
         for item in items:
             item["suggested_fix"] = "Pool deck with lounge seating"
         return items
@@ -68,13 +68,24 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertNotIn("error", results[1])
         self.assertEqual(results[1]["proposed_title"], "Title 1")
 
-    def test_fair_housing_guidelines_are_always_in_the_system_prompt(self):
+    def test_fair_housing_guidelines_are_used_when_client_enables_them(self):
+        agent = FakeAgent()
+        generator = ContentGenerator(agent=agent)
+        generator.generate_bulk_metadata(
+            [{"url": "https://example.com/"}],
+            client_context={"fair_housing_enabled": True},
+        )
+        system_prompt, user_prompt = agent.prompts[0]
+        self.assertIn("FAIR HOUSING RULES", system_prompt)
+        self.assertIn("Fair Housing safeguards", user_prompt)
+
+    def test_fair_housing_guidelines_are_off_by_default(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)
         generator.generate_bulk_metadata([{"url": "https://example.com/"}])
         system_prompt, user_prompt = agent.prompts[0]
-        self.assertIn("FAIR HOUSING RULES", system_prompt)
-        self.assertIn("Fair Housing Act compliant", user_prompt)
+        self.assertNotIn("FAIR HOUSING RULES", system_prompt)
+        self.assertNotIn("Fair Housing safeguards", user_prompt)
 
     def test_client_context_facts_are_included(self):
         agent = FakeAgent()
@@ -129,7 +140,7 @@ class ContentGenerationTests(unittest.TestCase):
 
     def test_metadata_validation_rules(self):
         self.assertIn("title_over_60", validate_metadata("x" * 61, "d" * 140))
-        self.assertIn("description_over_160", validate_metadata("ok", "d" * 161))
+        self.assertIn("description_over_155", validate_metadata("ok", "d" * 156))
         self.assertIn("description_under_130", validate_metadata("ok", "short"))
         self.assertEqual(validate_metadata("ok", "d" * 140), [])
 

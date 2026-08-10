@@ -56,7 +56,7 @@ PAGE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 @dataclass
 class KeywordCandidate:
     keyword: str
-    source: str  # ranking | seed | related
+    source: str  # approved | ranking | seed | related
     volume: int = 0
     cpc: float = 0.0
     difficulty: float = 0.0
@@ -85,22 +85,44 @@ class KeywordCandidate:
         }
 
 
-def seed_phrases(location: str, property_name: str = "") -> list[str]:
+def seed_phrases(
+    location: str,
+    property_name: str = "",
+    vertical: str = "multifamily",
+) -> list[str]:
     """Location seed phrases used to pull related-keyword ideas."""
     # Semrush has substantially better exact-keyword coverage for city-level
     # phrases than long-form values such as "Long Beach, California".
     location = location.split(",", 1)[0].strip()
-    phrases = [
-        f"apartments in {location}",
-        f"apartments for rent {location}",
-        f"luxury apartments {location}",
-        f"pet friendly apartments {location}",
-        f"studio apartments {location}",
-        f"1 bedroom apartments {location}",
-        f"2 bedroom apartments {location}",
-        f"3 bedroom apartments {location}",
-        f"new apartments {location}",
-    ]
+    if vertical == "new_homes":
+        phrases = [
+            f"new homes for sale {location}",
+            f"homes for sale {location}",
+            f"new construction homes {location}",
+            f"townhomes for sale {location}",
+            f"home builders {location}",
+        ]
+    elif vertical == "senior_housing":
+        phrases = [
+            f"55 plus apartments {location}",
+            f"senior apartments {location}",
+            f"active adult apartments {location}",
+            f"55 plus communities {location}",
+        ]
+    elif vertical == "corporate":
+        phrases = []
+    else:
+        phrases = [
+            f"apartments in {location}",
+            f"apartments for rent {location}",
+            f"luxury apartments {location}",
+            f"pet friendly apartments {location}",
+            f"studio apartments {location}",
+            f"1 bedroom apartments {location}",
+            f"2 bedroom apartments {location}",
+            f"3 bedroom apartments {location}",
+            f"new apartments {location}",
+        ]
     if property_name.strip():
         phrases.insert(0, f"{property_name.strip().lower()} {location}".strip())
     return phrases
@@ -126,10 +148,19 @@ def is_relevant_keyword(
     keyword: str,
     location_tokens: set[str],
     brand_tokens: set[str],
+    property_terms: set[str] | None = None,
+    excluded_phrases: tuple[str, ...] = (),
+    competitor_phrases: tuple[str, ...] = (),
 ) -> bool:
-    """Require housing intent plus a location or property-brand signal."""
+    """Require property fit and market intent while rejecting unsafe targets."""
+    lowered = " ".join(keyword.lower().split())
+    if any(phrase and phrase in lowered for phrase in excluded_phrases):
+        return False
+    if any(phrase and phrase in lowered for phrase in competitor_phrases):
+        return False
     tokens = set(re.findall(r"[a-z0-9]+", keyword.lower()))
-    has_housing_intent = bool(tokens & set(HOUSING_MARKERS))
+    required_terms = property_terms or set(HOUSING_MARKERS)
+    has_housing_intent = not required_terms or bool(tokens & required_terms)
     has_market_signal = bool(tokens & location_tokens) or bool(tokens & brand_tokens)
     return has_housing_intent and has_market_signal
 
@@ -137,7 +168,11 @@ def is_relevant_keyword(
 def score_candidate(candidate: KeywordCandidate, location_tokens: set[str]) -> float:
     """0-100 score blending volume, difficulty, ranking opportunity, locality."""
     volume_points = min(40.0, (candidate.volume or 0) ** 0.5 * 4)
-    difficulty_points = max(0.0, 25.0 - (candidate.difficulty or 0) * 0.25)
+    difficulty_points = (
+        max(0.0, 25.0 - candidate.difficulty * 0.25)
+        if candidate.difficulty or candidate.volume
+        else 12.5
+    )
     if candidate.position:
         # Ranking 4-20 is the sweet spot: proof of relevance plus headroom.
         if 4 <= candidate.position <= 20:
@@ -184,6 +219,11 @@ def build_keyword_strategy(
     rankings: list[dict] | None = None,
     related: list[dict] | None = None,
     seed_metrics: dict[str, dict] | None = None,
+    approved_targets: list[dict] | None = None,
+    property_terms: list[str] | None = None,
+    excluded_terms: list[str] | None = None,
+    competitor_terms: list[str] | None = None,
+    vertical: str = "multifamily",
     page_urls: list[str] | None = None,
     max_keywords: int = 60,
 ) -> list[dict]:
@@ -205,14 +245,58 @@ def build_keyword_strategy(
     }
 
     merged: dict[str, KeywordCandidate] = {}
+    property_term_source = HOUSING_MARKERS if property_terms is None else property_terms
+    required_property_terms = {
+        token
+        for value in property_term_source
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) > 2
+    }
+    excluded_phrases = tuple(
+        " ".join(value.lower().split())
+        for value in (excluded_terms or [])
+        if value.strip()
+    )
+    competitor_phrases = tuple(
+        " ".join(value.lower().split())
+        for value in (competitor_terms or [])
+        if value.strip()
+    )
     normalized_seed_metrics = {
         key.strip().lower(): value
         for key, value in (seed_metrics or {}).items()
     }
 
-    for row in rankings or []:
+    for row in approved_targets or []:
         keyword = (row.get("keyword") or "").strip().lower()
         if not keyword:
+            continue
+        metrics = row.get("metrics") or {}
+        merged[keyword] = KeywordCandidate(
+            keyword=keyword,
+            source="approved",
+            volume=int(metrics.get("volume") or 0),
+            cpc=float(metrics.get("cpc") or 0),
+            difficulty=float(metrics.get("difficulty") or metrics.get("kd") or 0),
+            competition=float(metrics.get("competition") or 0),
+            assigned_page=row.get("canonical_url") or homepage,
+            evidence={"approved_target": True, "role": row.get("role") or "primary"},
+        )
+
+    for row in rankings or []:
+        keyword = (row.get("keyword") or "").strip().lower()
+        if (
+            not keyword
+            or keyword in merged
+            or not is_relevant_keyword(
+                keyword,
+                location_tokens,
+                brand_tokens,
+                required_property_terms,
+                excluded_phrases,
+                competitor_phrases,
+            )
+        ):
             continue
         merged[keyword] = KeywordCandidate(
             keyword=keyword,
@@ -231,7 +315,14 @@ def build_keyword_strategy(
         if (
             not keyword
             or keyword in merged
-            or not is_relevant_keyword(keyword, location_tokens, brand_tokens)
+            or not is_relevant_keyword(
+                keyword,
+                location_tokens,
+                brand_tokens,
+                required_property_terms,
+                excluded_phrases,
+                competitor_phrases,
+            )
         ):
             continue
         merged[keyword] = KeywordCandidate(
@@ -244,9 +335,20 @@ def build_keyword_strategy(
             evidence={"semrush_report": "phrase_related"},
         )
 
-    for phrase in seed_phrases(location, property_name):
+    for phrase in seed_phrases(location, property_name, vertical):
         keyword = phrase.strip().lower()
-        if keyword and keyword not in merged:
+        if (
+            keyword
+            and keyword not in merged
+            and is_relevant_keyword(
+                keyword,
+                location_tokens,
+                brand_tokens,
+                required_property_terms,
+                excluded_phrases,
+                competitor_phrases,
+            )
+        ):
             metrics = normalized_seed_metrics.get(keyword, {})
             merged[keyword] = KeywordCandidate(
                 keyword=keyword,
@@ -268,12 +370,18 @@ def build_keyword_strategy(
     candidates = list(merged.values())
     for candidate in candidates:
         candidate.intent = classify_intent(candidate.keyword, brand_tokens)
-        candidate.score = score_candidate(candidate, location_tokens)
-        candidate.assigned_page = (
-            candidate.landing_page
-            if candidate.landing_page
-            else assign_page(candidate.keyword, pages, homepage)
-        )
+        if candidate.source == "approved":
+            candidate.score = 100.0
+        else:
+            candidate.score = score_candidate(candidate, location_tokens)
+            candidate.assigned_page = (
+                candidate.landing_page
+                if candidate.landing_page
+                else assign_page(candidate.keyword, pages, homepage)
+            )
 
-    candidates.sort(key=lambda item: item.score, reverse=True)
+    candidates.sort(
+        key=lambda item: (item.source == "approved", item.score, item.volume),
+        reverse=True,
+    )
     return [candidate.to_dict() for candidate in candidates[:max_keywords]]

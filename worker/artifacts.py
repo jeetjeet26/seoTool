@@ -109,8 +109,13 @@ class ArtifactStore:
 
     def upload_crawl_exports(self, audit_id: str, crawl_dir: Path) -> list[str]:
         uploaded = []
-        for path in sorted(Path(crawl_dir).glob("*.csv")):
-            uploaded.append(self.upload_file(audit_id, path, "crawl-export"))
+        paths = [
+            *Path(crawl_dir).glob("*.csv"),
+            *Path(crawl_dir).glob("*.seospider"),
+        ]
+        for path in sorted(paths):
+            if path.stat().st_size <= 49 * 1024 * 1024:
+                uploaded.append(self.upload_file(audit_id, path, "crawl-export"))
         return uploaded
 
 

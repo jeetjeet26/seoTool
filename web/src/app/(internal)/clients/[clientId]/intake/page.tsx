@@ -21,6 +21,11 @@ type Intake = {
   renovations?: string;
   events_partnerships?: string;
   content_plans?: string;
+  property_name?: string;
+  vertical?: string;
+  title_style_guide?: string;
+  fair_housing_enabled?: boolean;
+  semrush_project_id?: string;
   nap?: { name?: string; address?: string; phone?: string; website?: string };
 };
 
@@ -134,6 +139,45 @@ export default async function ClientIntakePage({
         <div className="form-section">
           <div>
             <span className="step-number">4</span>
+            <h2>SEO report rules</h2>
+            <p>Stable property context and writing rules used on every rerun.</p>
+          </div>
+          <div className="fields">
+            <label>
+              Property or project name
+              <input name="propertyName" defaultValue={intake.property_name ?? client.name} />
+            </label>
+            <label>
+              Property vertical
+              <select name="vertical" defaultValue={intake.vertical ?? "multifamily"}>
+                <option value="multifamily">Multifamily rental</option>
+                <option value="new_homes">New homes for sale</option>
+                <option value="senior_housing">Senior housing</option>
+                <option value="corporate">Corporate developer or operator</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              Title and description style guide
+              <textarea
+                name="titleStyleGuide"
+                rows={8}
+                defaultValue={intake.title_style_guide ?? DEFAULT_P11_STYLE_GUIDE}
+              />
+            </label>
+            <label>
+              Semrush project ID <span className="label-hint">Optional · auto-matched by domain when blank</span>
+              <input name="semrushProjectId" inputMode="numeric" defaultValue={intake.semrush_project_id ?? ""} />
+            </label>
+            <label className="toggle-row">
+              <span><strong>Apply Fair Housing safeguards</strong><small>Enable only when this client requires housing-specific language review.</small></span>
+              <input name="fairHousingEnabled" type="checkbox" defaultChecked={intake.fair_housing_enabled ?? false} />
+            </label>
+          </div>
+        </div>
+        <div className="form-section">
+          <div>
+            <span className="step-number">5</span>
             <h2>NAP for local listings</h2>
             <p>The exact name, address, and phone every listing must match.</p>
           </div>
@@ -170,3 +214,13 @@ export default async function ClientIntakePage({
     </div>
   );
 }
+
+const DEFAULT_P11_STYLE_GUIDE = `Use the approved P11 page-type patterns.
+Titles: maximum 60 characters; prefer one " - " separator; do not stack separators.
+Descriptions: 130-155 characters; lead with an action verb; place the target keyword in the first 100 characters; end with a natural CTA.
+Home: [Primary keyword] in [City, State] - [Brand]
+Floor plans: [Property type / bedroom keyword] in [City, State] - [Brand]
+Amenities: [Property type] Amenities in [City, State] - [Brand]
+Gallery: Gallery - [Property type] in [City, State]
+Contact: Contact [Property type] in [City, State] - [Brand]
+Use straight quotes, no em/en dashes, and preserve the client's established brand voice.`;

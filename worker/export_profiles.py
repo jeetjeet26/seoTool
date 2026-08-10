@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import date
 from typing import Any, Iterable
 
 from openpyxl import Workbook
@@ -273,6 +274,7 @@ def build_client_workbook(
     technical_rows: list[dict] | None = None,
     page_experience: list[dict] | None = None,
     recap_lines: list[str] | None = None,
+    report_variant: str = "full_client",
 ) -> Workbook:
     """Build the multi-sheet client report workbook.
 
@@ -307,12 +309,13 @@ def build_client_workbook(
         )
         sections.append("Keyword Research")
 
-    if metadata_items:
+    if metadata_items and report_variant == "full_client":
+        revised = date.today().strftime("%-m/%-d/%y")
         titles = workbook.create_sheet("Title Tags")
         _sheet_title(titles, property_name, "Title Tags")
         _table(
             titles,
-            ["URL", "Keywords", "Current Title", "Length", "Proposed Title", "Length"],
+            ["URL", "Keywords", "Current Title", "Length", "Proposed Title", "Length", "Date Revised"],
             [
                 [
                     item.get("url", ""),
@@ -321,6 +324,7 @@ def build_client_workbook(
                     len(item.get("current_title") or ""),
                     item.get("proposed_title") or item.get("title") or "",
                     len(item.get("proposed_title") or item.get("title") or ""),
+                    revised,
                 ]
                 for item in metadata_items
             ],
@@ -338,6 +342,7 @@ def build_client_workbook(
                 "Length",
                 "Proposed Description",
                 "Length",
+                "Date Revised",
             ],
             [
                 [
@@ -353,6 +358,7 @@ def build_client_workbook(
                         or item.get("proposed_meta_description")
                         or ""
                     ),
+                    revised,
                 ]
                 for item in metadata_items
             ],
@@ -372,10 +378,59 @@ def build_client_workbook(
         if h1_rows:
             h1_sheet = workbook.create_sheet("H1 Tags")
             _sheet_title(h1_sheet, property_name, "H1 Tags")
-            _table(h1_sheet, ["URL", "Keywords", "Current H1", "Proposed H1"], h1_rows)
+            h1_rows = [
+                [
+                    row[0],
+                    row[1],
+                    row[2],
+                    len(row[2] or ""),
+                    row[3],
+                    len(row[3] or ""),
+                    revised,
+                ]
+                for row in h1_rows
+            ]
+            _table(h1_sheet, ["URL", "Keywords", "Current H1", "Length", "Proposed H1", "Length", "Date Revised"], h1_rows)
             sections.append("H1 Tags")
 
-    if onpage_items:
+    if metadata_items and report_variant == "in_house":
+        treatment = workbook.create_sheet("SEO Treatment")
+        _sheet_title(treatment, property_name, "SEO Treatment")
+        _table(
+            treatment,
+            [
+                "URL",
+                "Keywords",
+                "Proposed Title",
+                "Length Title",
+                "Proposed Description",
+                "Length Description",
+                "Proposed H1",
+                "Length H1",
+            ],
+            [
+                [
+                    item.get("url", ""),
+                    "; ".join(item.get("keywords") or []),
+                    item.get("proposed_title") or item.get("current_title") or "",
+                    len(item.get("proposed_title") or item.get("current_title") or ""),
+                    item.get("proposed_meta_description")
+                    or item.get("current_meta_description")
+                    or "",
+                    len(
+                        item.get("proposed_meta_description")
+                        or item.get("current_meta_description")
+                        or ""
+                    ),
+                    item.get("proposed_h1") or item.get("current_h1") or "",
+                    len(item.get("proposed_h1") or item.get("current_h1") or ""),
+                ]
+                for item in metadata_items
+            ],
+        )
+        sections.append("SEO Treatment")
+
+    if onpage_items and report_variant == "full_client":
         onpage = workbook.create_sheet("On-Page SEO")
         _sheet_title(onpage, property_name, "On-Page SEO Recommendations")
         row_index = 5
@@ -383,7 +438,7 @@ def build_client_workbook(
             entries = [
                 ("Page:", item.get("url", "")),
                 ("Targeted Keyword(s):", "; ".join(item.get("keywords") or [])),
-                ("Original Copy:", item.get("current_content") or item.get("current_meta_description", "")),
+                ("Original Copy:", item.get("current_body_text") or ""),
                 ("Proposed Copy:", item.get("proposed_content") or item.get("content", "")),
             ]
             for label, value in entries:
@@ -398,7 +453,7 @@ def build_client_workbook(
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
         sections.append("On Page SEO")
 
-    if alt_text_items:
+    if alt_text_items and report_variant not in {"full_client", "in_house"}:
         alt_sheet = workbook.create_sheet("Alt Text")
         _sheet_title(alt_sheet, property_name, "Image Alt Text Recommendations")
         _table(
@@ -444,7 +499,7 @@ def build_client_workbook(
         )
         sections.append("Technical SEO")
 
-    if page_experience:
+    if page_experience and report_variant not in {"full_client", "in_house"}:
         speed = workbook.create_sheet("Page Speed")
         _sheet_title(speed, property_name, "Page Speed & Accessibility")
         _table(
@@ -461,7 +516,7 @@ def build_client_workbook(
         )
         sections.append("Page Speed")
 
-    if recap_lines:
+    if recap_lines and report_variant not in {"full_client", "in_house"}:
         recap = workbook.create_sheet("Program Recap")
         _sheet_title(recap, property_name, "Program Recap")
         row_index = 5
@@ -471,15 +526,16 @@ def build_client_workbook(
         recap.column_dimensions["A"].width = 120
         sections.append("Program Recap")
 
-    glossary = workbook.create_sheet("Glossary")
-    _sheet_title(glossary, property_name, "Glossary of Terms")
-    row_index = 5
-    for term, definition in GLOSSARY:
-        cell = glossary.cell(row=row_index, column=1, value=f"{term} - {definition}")
-        cell.alignment = Alignment(wrap_text=True, vertical="top")
-        row_index += 2
-    glossary.column_dimensions["A"].width = 120
-    sections.append("Glossary")
+    if report_variant not in {"full_client", "in_house"}:
+        glossary = workbook.create_sheet("Glossary")
+        _sheet_title(glossary, property_name, "Glossary of Terms")
+        row_index = 5
+        for term, definition in GLOSSARY:
+            cell = glossary.cell(row=row_index, column=1, value=f"{term} - {definition}")
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            row_index += 2
+        glossary.column_dimensions["A"].width = 120
+        sections.append("Glossary")
 
     # Introduction / table of contents last, once sections are known.
     intro.cell(row=1, column=1, value=property_name).font = TITLE_FONT
@@ -488,6 +544,8 @@ def build_client_workbook(
         intro.cell(row=5 + offset, column=2, value=section)
     intro.column_dimensions["A"].width = 8
     intro.column_dimensions["B"].width = 48
+    if report_variant == "in_house":
+        workbook.remove(intro)
 
     return workbook
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Iterable
 
@@ -23,6 +23,10 @@ class AuditJob:
     run_performance: bool
     run_accessibility: bool
     options: dict[str, Any]
+    client_id: str = ""
+    client_name: str = "Client"
+    client_intake: dict[str, Any] = field(default_factory=dict)
+    approved_keyword_targets: tuple[dict[str, Any], ...] = ()
 
     @property
     def location(self) -> str:
@@ -45,10 +49,25 @@ class WorkerRepository:
                 "select * from private.claim_audit_job(%s)",
                 (self.worker_id,),
             ).fetchone()
-        if not row:
-            return None
+            if not row:
+                return None
+            client = connection.execute(
+                "select name, intake from public.clients where id = %s",
+                (row["client_id"],),
+            ).fetchone()
+            targets = connection.execute(
+                """
+                select keyword, canonical_url, role, metrics
+                from public.keyword_targets
+                where client_id = %s and status = 'approved'
+                order by canonical_url, role, keyword
+                """,
+                (row["client_id"],),
+            ).fetchall()
         return AuditJob(
             id=str(row["id"]),
+            client_id=str(row["client_id"]),
+            client_name=(client or {}).get("name") or "Client",
             target_url=row["target_url"],
             target_city=row["target_city"],
             target_region=row.get("target_region"),
@@ -56,6 +75,8 @@ class WorkerRepository:
             run_performance=row["run_performance"],
             run_accessibility=row["run_accessibility"],
             options=row.get("options") or {},
+            client_intake=(client or {}).get("intake") or {},
+            approved_keyword_targets=tuple(targets),
         )
 
     def heartbeat(self, audit_id: str) -> bool:
@@ -141,7 +162,8 @@ class WorkerRepository:
                         finding.stable_id,
                         finding.category,
                         finding.issue_type,
-                        _finding_title(finding.issue_type),
+                        finding.metadata.get("semrush_title")
+                        or _finding_title(finding.issue_type),
                         _finding_description(finding),
                         finding.severity.value,
                         finding.page_url or None,

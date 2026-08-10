@@ -30,11 +30,23 @@ export function AuditForm() {
         </div>
       </div>
       <div className="form-section">
-        <div><span className="step-number">2</span><h2>Scan settings</h2><p>Control crawl depth and optional checks.</p></div>
+        <div><span className="step-number">2</span><h2>Report settings</h2><p>Choose the P11 deliverable and crawl depth.</p></div>
         <div className="fields">
+          <label>
+            Report variant
+            <select name="reportVariant" defaultValue="full_client">
+              <option value="full_client">Full client report (7 sections)</option>
+              <option value="in_house">In-house corporate SEO Treatment (3 sections)</option>
+            </select>
+          </label>
           <label>Page limit <span className="label-hint">Maximum 1,000</span><input name="pageLimit" type="number" min="1" max="1000" defaultValue="250" required /></label>
-          <label className="toggle-row"><span><strong>Performance checks</strong><small>Collect Core Web Vitals signals on sampled pages.</small></span><input name="runPerformance" type="checkbox" defaultChecked /></label>
-          <label className="toggle-row"><span><strong>Accessibility checks</strong><small>Run automated WCAG-oriented checks.</small></span><input name="runAccessibility" type="checkbox" defaultChecked /></label>
+          <details>
+            <summary>Optional PageSpeed and accessibility checks</summary>
+            <div className="fields">
+              <label className="toggle-row"><span><strong>Performance checks</strong><small>Collect sampled mobile PageSpeed signals.</small></span><input name="runPerformance" type="checkbox" /></label>
+              <label className="toggle-row"><span><strong>Accessibility checks</strong><small>Collect sampled automated accessibility signals.</small></span><input name="runAccessibility" type="checkbox" /></label>
+            </div>
+          </details>
         </div>
       </div>
       <div className="form-actions"><a className="button secondary" href="/dashboard">Cancel</a><button className="button primary" type="submit" disabled={pending}>{pending ? "Queueing…" : "Start audit"}</button></div>

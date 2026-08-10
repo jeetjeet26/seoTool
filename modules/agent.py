@@ -159,7 +159,11 @@ SAFE LANGUAGE EXAMPLES:
     # BATCH AUDIT SUGGESTION METHODS
     # ============================================================
 
-    def generate_alt_text_batch(self, items: List[Dict]) -> List[Dict]:
+    def generate_alt_text_batch(
+        self,
+        items: List[Dict],
+        fair_housing_enabled: bool = False,
+    ) -> List[Dict]:
         """
         Generate alt text suggestions for a batch of images.
         Each item should have: 'image_url', 'page_url'
@@ -175,14 +179,17 @@ SAFE LANGUAGE EXAMPLES:
                 for i, item in enumerate(batch)
             ])
             
-            system_prompt = f"""You are an expert SEO specialist for real estate websites. 
+            safeguards = (
+                self.FAIR_HOUSING_GUIDELINES if fair_housing_enabled else ""
+            )
+            system_prompt = f"""You are an expert SEO specialist.
 Your task is to generate descriptive, SEO-friendly alt text for images based on their filename and the page they appear on.
 Alt text should be concise (under 125 characters), descriptive, and include relevant keywords when appropriate.
-{self.FAIR_HOUSING_GUIDELINES}"""
+{safeguards}"""
             
             user_prompt = f"""Generate alt text for each of the following images. 
 Analyze the image filename and page URL to infer what the image likely shows.
-Ensure all alt text is Fair Housing Act compliant - focus on describing the physical space/amenity, not who might use it.
+Focus on describing the visible physical space or object rather than inferring people or demographics.
 
 Images:
 {items_text}

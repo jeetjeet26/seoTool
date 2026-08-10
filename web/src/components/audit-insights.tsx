@@ -2,15 +2,27 @@ import type {
   AltTextRecommendation,
   AuditSummary,
   ContentRecommendation,
-  KeywordStrategyItem,
   PageExperience,
 } from "@/lib/data/types";
+import { KeywordStrategyReview } from "@/components/keyword-strategy-review";
 
-export function AuditInsights({ summary }: { summary: AuditSummary }) {
-  const keywords = filterReportKeywords(
-    summary.keyword_strategy ?? [],
-    summary.target_location ?? "",
-  );
+type ApprovedTarget = {
+  id: string;
+  keyword: string;
+  canonical_url: string;
+  role: "primary" | "secondary";
+};
+
+export function AuditInsights({
+  auditId,
+  summary,
+  approvedTargets = [],
+}: {
+  auditId?: string;
+  summary: AuditSummary;
+  approvedTargets?: ApprovedTarget[];
+}) {
+  const keywords = summary.keyword_strategy ?? [];
   const recommendations = summary.content_recommendations ?? [];
   const altText = summary.alt_text_recommendations ?? [];
   const pageExperience = summary.page_experience ?? [];
@@ -18,8 +30,10 @@ export function AuditInsights({ summary }: { summary: AuditSummary }) {
 
   return <>
     <ServiceStatus errors={errors} />
+    <PropertyContext summary={summary} />
     <SiteInventory summary={summary} />
-    <KeywordStrategy keywords={keywords} />
+    <SemrushSiteAudit summary={summary} />
+    <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={approvedTargets} />
     <SearchVisibility summary={summary} />
     <RecommendationSection
       title="Title tag recommendations"
@@ -44,8 +58,39 @@ export function AuditInsights({ summary }: { summary: AuditSummary }) {
     />
     <OnPageRecommendations recommendations={recommendations} />
     <AltTextRecommendations items={altText} />
-    <PageSpeedResults results={pageExperience} errors={errors} />
+    {pageExperience.length > 0 && <PageSpeedResults results={pageExperience} errors={errors} />}
   </>;
+}
+
+function PropertyContext({ summary }: { summary: AuditSummary }) {
+  const property = summary.property_context;
+  if (!property) return null;
+  const metrics = [
+    ["Property", property.name],
+    ["Location", property.location],
+    ["Vertical", property.vertical?.replaceAll("_", " ")],
+    ["Address", property.address],
+    ["Report", summary.report_variant === "in_house" ? "In-house SEO Treatment" : "Full client"],
+  ].filter(([, value]) => value);
+  return <section className="card report-section">
+    <div className="section-title"><div><h2>Property and report context</h2><p>The approved facts driving keyword and copy decisions.</p></div></div>
+    <div className="insight-metrics">{metrics.map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>
+  </section>;
+}
+
+function SemrushSiteAudit({ summary }: { summary: AuditSummary }) {
+  const audit = summary.semrush_site_audit;
+  if (!audit?.project_id) return null;
+  return <section className="card report-section">
+    <div className="section-title"><div><h2>Semrush Site Audit</h2><p>{audit.project_name} · latest completed Semrush snapshot scoped to this audit URL.</p></div></div>
+    <div className="insight-metrics">
+      <article><span>Site health</span><strong>{formatNumber(audit.site_health)}</strong></article>
+      <article><span>Pages crawled</span><strong>{formatNumber(audit.pages_crawled)}</strong></article>
+      <article><span>Errors</span><strong>{formatNumber(audit.errors)}</strong></article>
+      <article><span>Warnings</span><strong>{formatNumber(audit.warnings)}</strong></article>
+      <article><span>Notices</span><strong>{formatNumber(audit.notices)}</strong></article>
+    </div>
+  </section>;
 }
 
 function ServiceStatus({
@@ -79,17 +124,6 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
     <div className="insight-metrics">
       {metrics.map(([label, value]) => <article key={label}><span>{label}</span><strong>{formatNumber(value)}</strong></article>)}
     </div>
-  </section>;
-}
-
-function KeywordStrategy({ keywords }: { keywords: KeywordStrategyItem[] }) {
-  return <section className="card report-section">
-    <div className="section-title"><div><h2>Keyword research & strategy</h2><p>{keywords.length} Semrush-backed ranking and related-keyword opportunities with target pages.</p></div></div>
-    {keywords.length
-      ? <div className="table-wrap"><table><thead><tr><th>Keyword</th><th>Source</th><th>Intent</th><th>Position</th><th>Volume</th><th>CPC</th><th>Difficulty</th><th>Target page</th></tr></thead><tbody>
-        {keywords.map((item) => <tr key={`${item.source}-${item.keyword}`}><td><strong>{item.keyword}</strong></td><td>{item.source}</td><td>{item.intent}</td><td>{item.position ?? "—"}</td><td>{formatNumber(item.volume)}</td><td>{formatCurrency(item.cpc)}</td><td>{formatNumber(item.difficulty)}</td><td className="url-cell"><ReportLink url={item.assigned_page}/></td></tr>)}
-      </tbody></table></div>
-      : <EmptyState text="Semrush returned no usable keyword opportunities."/>}
   </section>;
 }
 
@@ -127,10 +161,15 @@ function RecommendationSection({
   currentKey: RecommendationKey;
   proposedKey: RecommendationKey;
 }) {
+  const changed = recommendations.filter((item) => {
+    const current = String(item[currentKey] ?? "").trim();
+    const proposed = String(item[proposedKey] ?? "").trim();
+    return proposed && proposed !== current;
+  });
   return <section className="card report-section">
-    <div className="section-title"><div><h2>{title}</h2><p>{description}</p></div></div>
-    {recommendations.length
-      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th></tr></thead><tbody>{recommendations.map((item) => <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}</td><td><strong>{item[proposedKey] || "No change proposed"}</strong></td></tr>)}</tbody></table></div>
+    <div className="section-title"><div><h2>{title}</h2><p>{changed.length} material changes. Unchanged values are omitted. {description}</p></div></div>
+    {changed.length
+      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th></tr></thead><tbody>{changed.map((item) => <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}</td><td><WordDiff current={String(item[currentKey] ?? "")} proposed={String(item[proposedKey] ?? "")}/></td></tr>)}</tbody></table></div>
       : <EmptyState text="No recommendations were generated."/>}
   </section>;
 }
@@ -140,9 +179,23 @@ function OnPageRecommendations({ recommendations }: { recommendations: ContentRe
   return <section className="card report-section">
     <div className="section-title"><div><h2>On-page content recommendations</h2><p>{items.length} pages with proposed copy improvements.</p></div></div>
     {items.length
-      ? <div className="long-form-recommendations">{items.map((item) => <details key={item.url}><summary>{stripProtocol(item.url)}</summary><small>{formatNumber(item.current_body_word_count)} current body words</small>{item.rationale && <p><strong>Why:</strong> {item.rationale}</p>}<p><strong>Recommended copy:</strong> {item.proposed_content}</p></details>)}</div>
+      ? <div className="long-form-recommendations">{items.map((item) => <details key={item.url}><summary>{stripProtocol(item.url)}</summary><small>{formatNumber(item.current_body_word_count)} current body words</small>{item.rationale && <p><strong>Why:</strong> {item.rationale}</p>}<p><strong>Original copy:</strong> {item.current_body_text || "Source passage unavailable"}</p><p><strong>Proposed copy:</strong> <WordDiff current={item.current_body_text ?? ""} proposed={item.proposed_content ?? ""}/></p></details>)}</div>
       : <EmptyState text="No on-page copy changes were proposed."/>}
   </section>;
+}
+
+function WordDiff({ current, proposed }: { current: string; proposed: string }) {
+  const currentWords = current.split(/\s+/).filter(Boolean);
+  const proposedWords = proposed.split(/\s+/).filter(Boolean);
+  const currentSet = new Set(currentWords.map(normalizeWord));
+  return <>{proposedWords.map((word, index) => {
+    const changed = !currentSet.has(normalizeWord(word));
+    return <span key={`${word}-${index}`}>{index ? " " : ""}{changed ? <mark><strong>{word}</strong></mark> : word}</span>;
+  })}</>;
+}
+
+function normalizeWord(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
 function AltTextRecommendations({ items }: { items: AltTextRecommendation[] }) {
@@ -192,23 +245,3 @@ function formatNumber(value: unknown) {
   return value === undefined || value === null || value === "" ? "—" : String(value);
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value || 0);
-}
-
-const HOUSING_TERMS = new Set([
-  "apartment", "apartments", "rent", "rental", "rentals", "studio", "bedroom",
-  "bedrooms", "loft", "lofts", "flat", "flats", "housing", "townhome", "townhomes",
-]);
-
-function filterReportKeywords(items: KeywordStrategyItem[], location: string) {
-  const locationTokens = new Set(
-    location.toLowerCase().match(/[a-z0-9]+/g)?.filter((token) => token.length > 2) ?? [],
-  );
-  return items.filter((item) => {
-    if (item.source === "ranking" || item.source === "seed") return true;
-    const tokens = new Set(item.keyword.toLowerCase().match(/[a-z0-9]+/g) ?? []);
-    return [...tokens].some((token) => HOUSING_TERMS.has(token))
-      && [...tokens].some((token) => locationTokens.has(token));
-  });
-}

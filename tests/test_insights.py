@@ -34,6 +34,13 @@ class FakeSemrush:
     def get_backlinks_overview(self, domain):
         return {"authority_score": 28}
 
+    def get_site_audit(self, target_url, preferred_project_id=""):
+        return {
+            "project_id": 1,
+            "project_name": "Test project",
+            "findings": [],
+        }
+
     def get_keyword_ideas(self, phrase, limit=40):
         return [{"keyword": f"{phrase} related", "volume": 90}]
 
@@ -62,7 +69,12 @@ class FakeGenerator:
             for page in pages
         ]
 
-    def generate_alt_text(self, images, on_progress=None):
+    def generate_alt_text(
+        self,
+        images,
+        on_progress=None,
+        fair_housing_enabled=False,
+    ):
         return [
             {
                 "image_url": image["image_url"],

@@ -32,7 +32,12 @@ def generate_report_exports(
 
     excel_path = directory / f"seo-audit-{audit_id}.xlsx"
     workbook = build_client_workbook(
-        property_name=str(summary.get("target_location") or summary.get("target_url") or "SEO Audit"),
+        property_name=str(
+            (summary.get("property_context") or {}).get("name")
+            or summary.get("target_location")
+            or summary.get("target_url")
+            or "SEO Audit"
+        ),
         keywords=summary.get("keyword_strategy") or [],
         metadata_items=summary.get("content_recommendations") or [],
         onpage_items=[
@@ -44,6 +49,7 @@ def generate_report_exports(
         technical_rows=technical_rows_from_findings(rows),
         page_experience=summary.get("page_experience") or [],
         recap_lines=_recap_lines(summary),
+        report_variant=summary.get("report_variant", "full_client"),
     )
     workbook.save(excel_path)
     return [csv_path, excel_path]
