@@ -79,6 +79,37 @@ class HttpInventoryTests(unittest.TestCase):
         self.assertEqual(result["pages"], 1)
         self.assertEqual(rows[0]["Title 1"], "Example")
 
+    def test_still_fetches_target_when_sitemap_is_blocked(self):
+        row = {
+            "Address": "https://example.com/property/",
+            "Status Code": 200,
+            "Content Type": "text/html",
+            "Indexability": "Indexable",
+            "Title 1": "Property",
+            "Title 1 Length": 8,
+            "Meta Description 1": "",
+            "Meta Description 1 Length": 0,
+            "H1-1": "Property",
+            "H2-1": "",
+            "Canonical Link Element 1": "",
+            "Word Count": 80,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch(
+                    "modules.http_inventory.fetch_sitemap_urls",
+                    side_effect=RuntimeError("blocked"),
+                ),
+                patch("modules.http_inventory._fetch_page", return_value=row),
+            ):
+                result = build_http_inventory(
+                    "https://example.com/property/",
+                    Path(directory),
+                    10,
+                )
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(result["pages"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

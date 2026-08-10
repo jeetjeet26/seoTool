@@ -99,7 +99,10 @@ def build_http_inventory(
 ) -> dict:
     """Write a compatible internal_all.csv using safe browser-style requests."""
     safe_target = validate_public_audit_url(target_url)
-    sitemap_urls = fetch_sitemap_urls(safe_target, max_urls=page_limit * 5)
+    try:
+        sitemap_urls = fetch_sitemap_urls(safe_target, max_urls=page_limit * 5)
+    except RuntimeError:
+        sitemap_urls = []
     candidates = _scoped_candidates(safe_target, sitemap_urls, page_limit)
     rows = []
     errors = []
