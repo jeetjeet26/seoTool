@@ -15,6 +15,11 @@ REQUEST_TIMEOUT = 20
 MAX_BYTES = 2 * 1024 * 1024
 MAX_REDIRECTS = 4
 MAX_BODY_CHARS = 6000
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/147.0.0.0 Safari/537.36"
+)
 SKIP_TAGS = {
     "script",
     "style",
@@ -108,7 +113,7 @@ def fetch_visible_body_copy(url: str) -> dict[str, str | int]:
         response = requests.get(
             current_url,
             timeout=REQUEST_TIMEOUT,
-            headers={"User-Agent": "seo-audit-worker/1.0"},
+            headers={"User-Agent": USER_AGENT},
             stream=True,
             allow_redirects=False,
         )

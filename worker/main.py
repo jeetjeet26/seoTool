@@ -101,14 +101,22 @@ def process_job(
             valid_pages = int(
                 (insight_data.get("site_inventory") or {}).get("page_count") or 0
             )
-            if valid_pages <= 0:
-                raise RuntimeError(
-                    "Crawl blocked or incomplete: no valid indexable HTML pages "
-                    "were available for analysis."
-                )
             semrush_findings = insight_data.pop("_semrush_findings", [])
+            if valid_pages <= 0 and not semrush_findings:
+                raise RuntimeError(
+                    "Crawl blocked or incomplete: neither the page fallback nor "
+                    "Semrush Site Audit returned usable evidence."
+                )
+            crawler_findings = (
+                result.findings
+                if (insight_data.get("crawl_coverage") or {}).get(
+                    "mode", "screaming_frog"
+                )
+                == "screaming_frog"
+                else []
+            )
             combined_findings = _deduplicate_findings(
-                [*result.findings, *semrush_findings]
+                [*crawler_findings, *semrush_findings]
             )
             repository.record_progress(
                 ProgressEvent(
@@ -141,7 +149,10 @@ def process_job(
             category_counts = Counter(
                 finding.category for finding in combined_findings
             )
-            pages_scanned = _count_csv_rows(job_dir / "crawl" / "internal_all.csv")
+            pages_scanned = valid_pages or int(
+                (insight_data.get("semrush_site_audit") or {}).get("scoped_pages")
+                or 0
+            )
             score = _health_score(severity_counts, pages_scanned)
             summary = {
                 "finding_count": finding_count,

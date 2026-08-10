@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
+from modules.http_inventory import build_http_inventory
 from modules.keyword_strategy import build_keyword_strategy, seed_phrases
 from modules.models import Finding, Severity
 from modules.page_content import fetch_body_copy_for_pages
@@ -50,6 +51,7 @@ class InsightRunner:
             "keyword_metrics": {},
             "keyword_strategy": [],
             "site_inventory": {},
+            "crawl_coverage": {},
             "body_copy_coverage": {},
             "content_recommendations": [],
             "alt_text_recommendations": [],
@@ -60,6 +62,39 @@ class InsightRunner:
         inventory = build_site_inventory(
             crawl_dir, job.target_url, page_limit=job.page_limit
         )
+        if not inventory.pages:
+            fallback = build_http_inventory(
+                job.target_url,
+                crawl_dir,
+                job.page_limit,
+            )
+            inventory = build_site_inventory(
+                crawl_dir,
+                job.target_url,
+                page_limit=job.page_limit,
+            )
+            inventory.images_missing_alt = []
+            result["crawl_coverage"] = {
+                "mode": "browser_http_fallback",
+                "screaming_frog": "blocked",
+                **fallback,
+            }
+            result["enrichment_errors"].append(
+                {
+                    "service": "screaming_frog",
+                    "message": (
+                        "Screaming Frog was blocked by the target site. "
+                        f"Browser-style fallback analyzed {len(inventory.pages)} pages; "
+                        "Semrush supplies technical issue evidence."
+                    ),
+                }
+            )
+        else:
+            result["crawl_coverage"] = {
+                "mode": "screaming_frog",
+                "screaming_frog": "complete",
+                "pages": len(inventory.pages),
+            }
         result["site_inventory"] = inventory.summary()
         pages = inventory.pages
         intake = job.client_intake

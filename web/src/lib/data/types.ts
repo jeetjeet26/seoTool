@@ -89,6 +89,7 @@ export interface AuditSummary {
     project_name?: string;
     domain?: string;
     pages_crawled?: number;
+    scoped_pages?: number;
     site_health?: number;
     errors?: number;
     warnings?: number;
@@ -104,6 +105,13 @@ export interface AuditSummary {
   };
   report_variant?: "full_client" | "in_house";
   fair_housing_enabled?: boolean;
+  crawl_coverage?: {
+    mode?: "screaming_frog" | "browser_http_fallback";
+    screaming_frog?: "complete" | "blocked";
+    attempted?: number;
+    pages?: number;
+    failed?: number;
+  };
   competitors?: CompetitorMetric[];
   backlinks?: Record<string, number>;
   keyword_strategy?: KeywordStrategyItem[];

@@ -22,6 +22,11 @@ SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 MAX_SITEMAP_BYTES = 10 * 1024 * 1024
 MAX_SITEMAP_DOCS = 20
 REQUEST_TIMEOUT = 30
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/147.0.0.0 Safari/537.36"
+)
 
 
 @dataclass(frozen=True)
@@ -239,7 +244,26 @@ def fetch_sitemap_urls(target_url: str, max_urls: int = 5000) -> list[str]:
     origin = validate_public_audit_url(target_url)
     parts = urlsplit(origin)
     root = f"{parts.scheme}://{parts.netloc}"
-    queue = [urljoin(root, "/sitemap.xml"), urljoin(root, "/sitemap_index.xml")]
+    queue = [
+        urljoin(root, "/sitemap.xml"),
+        urljoin(root, "/sitemap_index.xml"),
+        urljoin(root, "/sitemaps.xml"),
+    ]
+    try:
+        robots_url = validate_public_audit_url(urljoin(root, "/robots.txt"))
+        robots = requests.get(
+            robots_url,
+            timeout=REQUEST_TIMEOUT,
+            headers={"User-Agent": BROWSER_USER_AGENT},
+        )
+        if robots.status_code == 200:
+            for line in robots.text.splitlines():
+                if line.lower().startswith("sitemap:"):
+                    sitemap_url = line.split(":", 1)[1].strip()
+                    if sitemap_url:
+                        queue.append(sitemap_url)
+    except (UnsafeAuditUrl, requests.RequestException):
+        pass
     seen_docs: set[str] = set()
     urls: list[str] = []
     fetched = 0
@@ -257,7 +281,7 @@ def fetch_sitemap_urls(target_url: str, max_urls: int = 5000) -> list[str]:
             response = requests.get(
                 safe_url,
                 timeout=REQUEST_TIMEOUT,
-                headers={"User-Agent": "seo-audit-worker/1.0"},
+                headers={"User-Agent": BROWSER_USER_AGENT},
                 stream=True,
             )
         except requests.RequestException:

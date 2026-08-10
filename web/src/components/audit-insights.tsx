@@ -31,6 +31,7 @@ export function AuditInsights({
   return <>
     <ServiceStatus errors={errors} />
     <PropertyContext summary={summary} />
+    <CrawlCoverage summary={summary} />
     <SiteInventory summary={summary} />
     <SemrushSiteAudit summary={summary} />
     <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={approvedTargets} />
@@ -60,6 +61,23 @@ export function AuditInsights({
     <AltTextRecommendations items={altText} />
     {pageExperience.length > 0 && <PageSpeedResults results={pageExperience} errors={errors} />}
   </>;
+}
+
+function CrawlCoverage({ summary }: { summary: AuditSummary }) {
+  const coverage = summary.crawl_coverage;
+  if (!coverage) return null;
+  const fallback = coverage.mode === "browser_http_fallback";
+  return <section className={`card report-section${fallback ? " analysis-notice" : ""}`}>
+    <div className="section-title"><div><h2>Data source coverage</h2><p>{fallback
+      ? "Screaming Frog was blocked. This report uses browser-style page analysis plus the matching Semrush Site Audit."
+      : "Screaming Frog completed successfully; Semrush provides supplemental technical and search evidence."}</p></div></div>
+    <div className="insight-metrics">
+      <article><span>Screaming Frog</span><strong>{fallback ? "Blocked" : "Complete"}</strong></article>
+      <article><span>Page analysis</span><strong>{fallback ? "Browser fallback" : "Screaming Frog"}</strong></article>
+      <article><span>Pages analyzed</span><strong>{formatNumber(coverage.pages)}</strong></article>
+      <article><span>Semrush issues</span><strong>{summary.semrush_site_audit?.project_id ? "Included" : "Unavailable"}</strong></article>
+    </div>
+  </section>;
 }
 
 function PropertyContext({ summary }: { summary: AuditSummary }) {

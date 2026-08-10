@@ -345,6 +345,13 @@ class SemrushClient:
             "domain": project.get("domain_unicode") or project.get("url") or hostname,
             "snapshot_id": snapshot_id,
             "pages_crawled": snapshot.get("pages_crawled", info.get("pages_crawled", 0)),
+            "scoped_pages": len(
+                {
+                    item.get("page_url")
+                    for item in findings
+                    if item.get("page_url")
+                }
+            ),
             "site_health": (snapshot.get("quality") or {}).get("value"),
             "errors": issue_totals["errors"],
             "warnings": issue_totals["warnings"],
