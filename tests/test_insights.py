@@ -224,11 +224,19 @@ class InsightRunnerTests(unittest.TestCase):
     def test_audit_community_type_overrides_multifamily_default(self):
         result = self._run(
             page_count=2,
-            options={"community_type": "new_homes"},
+            options={
+                "community_type": "new_homes",
+                "secondary_market": "Los Angeles",
+            },
         )
         self.assertEqual(result["property_context"]["vertical"], "new_homes")
+        self.assertEqual(
+            result["property_context"]["secondary_market"],
+            "Los Angeles",
+        )
         keywords = [item["keyword"] for item in result["keyword_strategy"]]
         self.assertTrue(any("homes for sale" in keyword for keyword in keywords))
+        self.assertTrue(any("los angeles" in keyword for keyword in keywords))
         self.assertFalse(any("apartments for rent" in keyword for keyword in keywords))
 
     def test_alt_text_and_page_experience(self):

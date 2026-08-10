@@ -100,6 +100,7 @@ export interface AuditSummary {
   property_context?: {
     name?: string;
     location?: string;
+    secondary_market?: string;
     vertical?: string;
     address?: string;
     website?: string;

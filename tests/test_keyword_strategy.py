@@ -29,6 +29,16 @@ class KeywordStrategyTests(unittest.TestCase):
         )
         self.assertIn("master planned communities Irvine", master_planned)
 
+        dual_market = build_keyword_strategy(
+            location="Walnut, California",
+            target_url="https://example.com/",
+            vertical="new_homes",
+            secondary_locations=["Los Angeles, California"],
+        )
+        keywords = [item["keyword"] for item in dual_market]
+        self.assertIn("new homes for sale walnut", keywords)
+        self.assertIn("new homes for sale los angeles", keywords)
+
     def test_intent_classification(self):
         brand = {"alexan"}
         self.assertEqual(

@@ -20,6 +20,9 @@ export async function queueAudit(
   const targetUrl = String(formData.get("targetUrl") ?? "").trim();
   const targetCity = String(formData.get("targetCity") ?? "").trim();
   const targetRegion = String(formData.get("targetRegion") ?? "").trim();
+  const secondaryMarket = String(
+    formData.get("secondaryMarket") ?? "",
+  ).trim();
   const rawCompetitorDomains = String(
     formData.get("competitorDomains") ?? "",
   ).trim();
@@ -33,6 +36,9 @@ export async function queueAudit(
 
   if (!clientName || !targetUrl || !targetCity) {
     return { error: "Client name, website URL, and city are required." };
+  }
+  if (secondaryMarket.length > 160) {
+    return { error: "Metro or secondary market must be 160 characters or fewer." };
   }
   let normalizedTargetUrl: string;
   let websiteUrl: string;
@@ -136,6 +142,7 @@ export async function queueAudit(
         report_variant: reportVariant,
         crawl_source: crawlSource,
         community_type: communityType,
+        secondary_market: secondaryMarket,
       },
       status: awaitingUpload ? "draft" : "queued",
       current_stage: awaitingUpload ? "awaiting_upload" : "queued",

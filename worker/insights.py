@@ -114,6 +114,20 @@ class InsightRunner:
         if vertical == "senior_housing":
             vertical = "senior_living"
         target_markets = _list_values(intake.get("target_markets"))
+        secondary_market = str(
+            job.options.get("secondary_market") or ""
+        ).strip()
+        secondary_locations = (
+            [
+                ", ".join(
+                    value
+                    for value in (secondary_market, job.target_region)
+                    if value
+                )
+            ]
+            if secondary_market
+            else []
+        )
         excluded_terms = _list_values(intake.get("avoided_terms"))
         competitor_terms = _competitor_terms(
             [
@@ -124,6 +138,7 @@ class InsightRunner:
         result["property_context"] = {
             "name": property_name,
             "location": job.location,
+            "secondary_market": secondary_market,
             "vertical": vertical,
             "address": (intake.get("nap") or {}).get("address", ""),
             "website": job.target_url,
@@ -165,8 +180,15 @@ class InsightRunner:
                         ),
                     }
                 )
-            audit_seeds = seed_phrases(job.location, property_name, vertical)
-            for phrase in audit_seeds[:3]:
+            primary_seeds = seed_phrases(job.location, property_name, vertical)
+            secondary_seeds = [
+                phrase
+                for market in secondary_locations
+                for phrase in seed_phrases(market, property_name, vertical)
+            ]
+            audit_seeds = list(dict.fromkeys([*primary_seeds, *secondary_seeds]))
+            research_seeds = [*primary_seeds[:2], *secondary_seeds[:2]]
+            for phrase in research_seeds:
                 related.extend(self.semrush.get_keyword_ideas(phrase, limit=15))
             seed_metrics = self.semrush.get_keyword_data(audit_seeds)
         except Exception as exc:  # noqa: BLE001
@@ -192,6 +214,7 @@ class InsightRunner:
             excluded_terms=excluded_terms,
             competitor_terms=competitor_terms,
             vertical=vertical,
+            secondary_locations=secondary_locations,
             page_urls=[page.url for page in pages],
             max_keywords=40,
         )
@@ -265,7 +288,9 @@ class InsightRunner:
                         mode="existing",
                         client_context={
                             "name": property_name,
-                            "location": job.location,
+                            "location": " / ".join(
+                                [job.location, *secondary_locations]
+                            ),
                             "vertical": vertical,
                             "differentiators": intake.get("differentiators", ""),
                             "amenities": intake.get("amenities", ""),

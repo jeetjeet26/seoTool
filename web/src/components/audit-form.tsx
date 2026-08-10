@@ -49,7 +49,8 @@ export function AuditForm() {
         <div className="fields">
           <label>Client name<input name="clientName" required autoComplete="organization" placeholder="Client or property name" /></label>
           <label>Website URL<input name="targetUrl" type="url" required placeholder="https://example.com" /></label>
-          <div className="field-row"><label>City<input name="targetCity" required placeholder="Austin" /></label><label>State or region<input name="targetRegion" placeholder="Texas" maxLength={160} /></label></div>
+          <div className="field-row"><label>Primary city<input name="targetCity" required placeholder="Walnut" /></label><label>State or region<input name="targetRegion" placeholder="California" maxLength={160} /></label></div>
+          <label>Metro or secondary market <span className="label-hint">Optional</span><input name="secondaryMarket" placeholder="Los Angeles" maxLength={160} /></label>
           <label>
             Community type
             <select name="communityType" value={communityType} onChange={(event) => setCommunityType(event.target.value)}>

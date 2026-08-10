@@ -101,6 +101,7 @@ function PropertyContext({ summary }: { summary: AuditSummary }) {
   const metrics = [
     ["Property", property.name],
     ["Location", property.location],
+    ["Metro market", property.secondary_market],
     ["Vertical", property.vertical?.replaceAll("_", " ")],
     ["Address", property.address],
     ["Report", summary.report_variant === "in_house" ? "In-house SEO Treatment" : "Full client"],

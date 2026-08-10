@@ -40,6 +40,27 @@ HOUSING_MARKERS = (
     "townhome",
     "townhomes",
 )
+VERTICAL_MARKERS = {
+    "multifamily": HOUSING_MARKERS,
+    "senior_housing": (
+        "senior", "apartment", "apartments", "community", "communities",
+    ),
+    "senior_living": (
+        "senior", "apartment", "apartments", "community", "communities",
+    ),
+    "new_homes": (
+        "home", "homes", "house", "houses", "townhome", "townhomes",
+        "condo", "condominiums", "construction", "builder", "builders",
+    ),
+    "master_planned": (
+        "master", "planned", "community", "communities", "home", "homes",
+        "townhome", "townhomes", "construction",
+    ),
+    "luxury_living": (
+        "luxury", "home", "homes", "residence", "residences", "apartment",
+        "apartments", "condo", "condominiums", "community", "communities",
+    ),
+}
 
 PAGE_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("floor-plan", ("bedroom", "studio", "floor plan", "floorplan", "loft")),
@@ -238,6 +259,7 @@ def build_keyword_strategy(
     excluded_terms: list[str] | None = None,
     competitor_terms: list[str] | None = None,
     vertical: str = "multifamily",
+    secondary_locations: list[str] | None = None,
     page_urls: list[str] | None = None,
     max_keywords: int = 60,
 ) -> list[dict]:
@@ -252,14 +274,20 @@ def build_keyword_strategy(
         if token not in {"www", "com", "net", "org", "apartments", "the"}
         and len(token) > 2
     }
+    all_locations = [location, *(secondary_locations or [])]
     location_tokens = {
         token
-        for token in re.findall(r"[a-z0-9]+", location.lower())
+        for value in all_locations
+        for token in re.findall(r"[a-z0-9]+", value.lower())
         if len(token) > 2
     }
 
     merged: dict[str, KeywordCandidate] = {}
-    property_term_source = HOUSING_MARKERS if property_terms is None else property_terms
+    property_term_source = (
+        VERTICAL_MARKERS.get(vertical, HOUSING_MARKERS)
+        if property_terms is None
+        else property_terms
+    )
     required_property_terms = {
         token
         for value in property_term_source
@@ -349,7 +377,12 @@ def build_keyword_strategy(
             evidence={"semrush_report": "phrase_related"},
         )
 
-    for phrase in seed_phrases(location, property_name, vertical):
+    strategy_seeds = [
+        phrase
+        for market in all_locations
+        for phrase in seed_phrases(market, property_name, vertical)
+    ]
+    for phrase in dict.fromkeys(strategy_seeds):
         keyword = phrase.strip().lower()
         if (
             keyword
