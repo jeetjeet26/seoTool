@@ -106,7 +106,13 @@ class InsightRunner:
             str(intake.get("property_name") or "").strip()
             or job.client_name
         )
-        vertical = str(intake.get("vertical") or "multifamily")
+        vertical = str(
+            job.options.get("community_type")
+            or intake.get("vertical")
+            or "multifamily"
+        )
+        if vertical == "senior_housing":
+            vertical = "senior_living"
         target_markets = _list_values(intake.get("target_markets"))
         excluded_terms = _list_values(intake.get("avoided_terms"))
         competitor_terms = _competitor_terms(
@@ -418,6 +424,18 @@ def _property_terms(vertical: str, target_markets: list[str]) -> list[str]:
         "senior_housing": [
             "senior", "55 plus", "55+", "active adult", "apartment",
             "apartments", "community", "communities",
+        ],
+        "senior_living": [
+            "senior", "55 plus", "55+", "active adult", "apartment",
+            "apartments", "community", "communities",
+        ],
+        "master_planned": [
+            "master planned", "community", "communities", "home", "homes",
+            "house", "houses", "townhome", "townhomes", "new construction",
+        ],
+        "luxury_living": [
+            "luxury", "home", "homes", "residence", "residences",
+            "apartment", "apartments", "condo", "condominiums",
         ],
         "corporate": [],
         "other": [],

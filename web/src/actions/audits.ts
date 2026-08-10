@@ -27,6 +27,9 @@ export async function queueAudit(
   const reportVariant = String(formData.get("reportVariant") ?? "full_client");
   const crawlSource = String(formData.get("crawlSource") ?? "cloud");
   const hasLocalUpload = formData.get("hasLocalUpload") === "yes";
+  const communityType = String(
+    formData.get("communityType") ?? "multifamily",
+  );
 
   if (!clientName || !targetUrl || !targetCity) {
     return { error: "Client name, website URL, and city are required." };
@@ -62,6 +65,17 @@ export async function queueAudit(
   }
   if (!["cloud", "local", "cloud_fallback"].includes(crawlSource)) {
     return { error: "Choose a valid crawl source." };
+  }
+  if (
+    ![
+      "multifamily",
+      "senior_living",
+      "new_homes",
+      "master_planned",
+      "luxury_living",
+    ].includes(communityType)
+  ) {
+    return { error: "Choose a valid community type." };
   }
   if (crawlSource === "local" && !hasLocalUpload) {
     return { error: "Choose a Screaming Frog ZIP or CSV files for local import." };
@@ -121,6 +135,7 @@ export async function queueAudit(
         competitor_domains: competitorDomains,
         report_variant: reportVariant,
         crawl_source: crawlSource,
+        community_type: communityType,
       },
       status: awaitingUpload ? "draft" : "queued",
       current_stage: awaitingUpload ? "awaiting_upload" : "queued",

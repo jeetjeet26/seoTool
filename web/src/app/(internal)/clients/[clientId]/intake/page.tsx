@@ -47,6 +47,9 @@ export default async function ClientIntakePage({
 
   const intake = (client.intake ?? {}) as Intake;
   const nap = intake.nap ?? {};
+  const vertical = intake.vertical === "senior_housing"
+    ? "senior_living"
+    : (intake.vertical ?? "multifamily");
 
   return (
     <div className="narrow-page">
@@ -149,12 +152,12 @@ export default async function ClientIntakePage({
             </label>
             <label>
               Property vertical
-              <select name="vertical" defaultValue={intake.vertical ?? "multifamily"}>
-                <option value="multifamily">Multifamily rental</option>
+              <select name="vertical" defaultValue={vertical}>
+                <option value="multifamily">Multifamily</option>
+                <option value="senior_living">Senior Living</option>
                 <option value="new_homes">New homes for sale</option>
-                <option value="senior_housing">Senior housing</option>
-                <option value="corporate">Corporate developer or operator</option>
-                <option value="other">Other</option>
+                <option value="master_planned">Master Planned Communities</option>
+                <option value="luxury_living">Luxury Living</option>
               </select>
             </label>
             <label>

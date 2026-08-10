@@ -14,6 +14,21 @@ class KeywordStrategyTests(unittest.TestCase):
         phrases = seed_phrases("Long Beach, California")
         self.assertTrue(all("long beach" in phrase.lower() for phrase in phrases))
 
+    def test_community_type_changes_seed_strategy(self):
+        new_homes = seed_phrases(
+            "Walnut, California",
+            "The Terraces",
+            "new_homes",
+        )
+        self.assertIn("new homes for sale Walnut", new_homes)
+        self.assertFalse(any("apartments for rent" in item for item in new_homes))
+        master_planned = seed_phrases(
+            "Irvine, California",
+            "",
+            "master_planned",
+        )
+        self.assertIn("master planned communities Irvine", master_planned)
+
     def test_intent_classification(self):
         brand = {"alexan"}
         self.assertEqual(

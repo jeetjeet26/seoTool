@@ -10,6 +10,7 @@ const initialState: QueueAuditState = {};
 export function AuditForm() {
   const [state, action, pending] = useActionState(queueAudit, initialState);
   const [crawlSource, setCrawlSource] = useState("cloud");
+  const [communityType, setCommunityType] = useState("multifamily");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
@@ -49,6 +50,17 @@ export function AuditForm() {
           <label>Client name<input name="clientName" required autoComplete="organization" placeholder="Client or property name" /></label>
           <label>Website URL<input name="targetUrl" type="url" required placeholder="https://example.com" /></label>
           <div className="field-row"><label>City<input name="targetCity" required placeholder="Austin" /></label><label>State or region<input name="targetRegion" placeholder="Texas" maxLength={160} /></label></div>
+          <label>
+            Community type
+            <select name="communityType" value={communityType} onChange={(event) => setCommunityType(event.target.value)}>
+              <option value="multifamily">Multifamily</option>
+              <option value="senior_living">Senior Living</option>
+              <option value="new_homes">New Homes</option>
+              <option value="master_planned">Master Planned Communities</option>
+              <option value="luxury_living">Luxury Living</option>
+            </select>
+            <small>{COMMUNITY_TYPE_DESCRIPTIONS[communityType]}</small>
+          </label>
           <label>
             Competitor domains <span className="label-hint">Optional · one per line · maximum 10</span>
             <textarea
@@ -106,3 +118,11 @@ export function AuditForm() {
     </form>
   );
 }
+
+const COMMUNITY_TYPE_DESCRIPTIONS: Record<string, string> = {
+  multifamily: "Drive demand and lease-ups for modern multifamily communities.",
+  senior_living: "Build trust-first messaging that resonates with residents and families.",
+  new_homes: "Launch new communities with clarity, momentum, and buyer confidence.",
+  master_planned: "Master planned communities aren't a single campaign - they're a story in motion.",
+  luxury_living: "Position elevated communities with refined, experience-led messaging.",
+};

@@ -102,12 +102,26 @@ def seed_phrases(
             f"townhomes for sale {location}",
             f"home builders {location}",
         ]
-    elif vertical == "senior_housing":
+    elif vertical in {"senior_housing", "senior_living"}:
         phrases = [
             f"55 plus apartments {location}",
             f"senior apartments {location}",
             f"active adult apartments {location}",
             f"55 plus communities {location}",
+        ]
+    elif vertical == "master_planned":
+        phrases = [
+            f"master planned communities {location}",
+            f"new homes in {location}",
+            f"new construction homes {location}",
+            f"homes for sale {location}",
+        ]
+    elif vertical == "luxury_living":
+        phrases = [
+            f"luxury homes {location}",
+            f"luxury residences {location}",
+            f"luxury living {location}",
+            f"luxury communities {location}",
         ]
     elif vertical == "corporate":
         phrases = []
