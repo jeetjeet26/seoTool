@@ -186,6 +186,8 @@ def is_relevant_keyword(
     property_terms: set[str] | None = None,
     excluded_phrases: tuple[str, ...] = (),
     competitor_phrases: tuple[str, ...] = (),
+    location_phrases: tuple[str, ...] = (),
+    location_suffix_tokens: set[str] | None = None,
 ) -> bool:
     """Require property fit and market intent while rejecting unsafe targets."""
     lowered = " ".join(keyword.lower().split())
@@ -196,8 +198,45 @@ def is_relevant_keyword(
     tokens = set(re.findall(r"[a-z0-9]+", keyword.lower()))
     required_terms = property_terms or set(HOUSING_MARKERS)
     has_housing_intent = not required_terms or bool(tokens & required_terms)
-    has_market_signal = bool(tokens & location_tokens) or bool(tokens & brand_tokens)
+    has_market_signal = (
+        _has_approved_location(
+            lowered,
+            location_phrases,
+            required_terms,
+            location_suffix_tokens or set(),
+        )
+        if location_phrases
+        else bool(tokens & location_tokens)
+    ) or bool(tokens & brand_tokens)
     return has_housing_intent and has_market_signal
+
+
+def _has_approved_location(
+    keyword: str,
+    location_phrases: tuple[str, ...],
+    property_terms: set[str],
+    suffix_tokens: set[str],
+) -> bool:
+    words = re.findall(r"[a-z0-9]+", keyword)
+    allowed_after_single_city = {
+        "ca", "tx", "fl", "ga", "az", "nv", "hi", "il", "ny", "nj",
+        "new", "luxury", "for", "in", "near", "area", "county",
+        *property_terms,
+        *suffix_tokens,
+    }
+    for phrase in location_phrases:
+        parts = re.findall(r"[a-z0-9]+", phrase)
+        if not parts:
+            continue
+        for index in range(0, len(words) - len(parts) + 1):
+            if words[index : index + len(parts)] != parts:
+                continue
+            if len(parts) > 1 or index + 1 >= len(words):
+                return True
+            following = words[index + 1]
+            if following in allowed_after_single_city or following.isdigit():
+                return True
+    return False
 
 
 def score_candidate(candidate: KeywordCandidate, location_tokens: set[str]) -> float:
@@ -275,11 +314,26 @@ def build_keyword_strategy(
         and len(token) > 2
     }
     all_locations = [location, *(secondary_locations or [])]
+    location_phrases = tuple(
+        value.split(",", 1)[0].strip().lower()
+        for value in all_locations
+        if value.strip()
+    )
     location_tokens = {
         token
         for value in all_locations
         for token in re.findall(r"[a-z0-9]+", value.lower())
         if len(token) > 2
+    }
+    location_suffix_tokens = {
+        token
+        for value in all_locations
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if token not in {
+            part
+            for phrase in location_phrases
+            for part in phrase.split()
+        }
     }
 
     merged: dict[str, KeywordCandidate] = {}
@@ -337,6 +391,8 @@ def build_keyword_strategy(
                 required_property_terms,
                 excluded_phrases,
                 competitor_phrases,
+                location_phrases,
+                location_suffix_tokens,
             )
         ):
             continue
@@ -364,6 +420,8 @@ def build_keyword_strategy(
                 required_property_terms,
                 excluded_phrases,
                 competitor_phrases,
+                location_phrases,
+                location_suffix_tokens,
             )
         ):
             continue
@@ -394,6 +452,8 @@ def build_keyword_strategy(
                 required_property_terms,
                 excluded_phrases,
                 competitor_phrases,
+                location_phrases,
+                location_suffix_tokens,
             )
         ):
             metrics = normalized_seed_metrics.get(keyword, {})
