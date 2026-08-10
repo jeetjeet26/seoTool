@@ -27,6 +27,9 @@ export function AuditInsights({
   const altText = summary.alt_text_recommendations ?? [];
   const pageExperience = summary.page_experience ?? [];
   const errors = summary.enrichment_errors ?? [];
+  const pageAnalysisUnavailable =
+    summary.crawl_coverage?.mode === "browser_http_fallback"
+    && !recommendations.length;
 
   return <>
     <ServiceStatus errors={errors} />
@@ -36,31 +39,38 @@ export function AuditInsights({
     <SemrushSiteAudit summary={summary} />
     <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={approvedTargets} />
     <SearchVisibility summary={summary} />
-    <RecommendationSection
+    {pageAnalysisUnavailable && <PageRecommendationsUnavailable />}
+    {recommendations.length > 0 && <RecommendationSection
       title="Title tag recommendations"
       description={`${recommendations.length} crawled pages with current and proposed title tags.`}
       recommendations={recommendations}
       currentKey="current_title"
       proposedKey="proposed_title"
-    />
-    <RecommendationSection
+    />}
+    {recommendations.length > 0 && <RecommendationSection
       title="Meta description recommendations"
       description={`${recommendations.length} crawled pages with current and proposed descriptions.`}
       recommendations={recommendations}
       currentKey="current_meta_description"
       proposedKey="proposed_meta_description"
-    />
-    <RecommendationSection
+    />}
+    {recommendations.length > 0 && <RecommendationSection
       title="H1 recommendations"
       description={`${recommendations.length} crawled pages with current and proposed primary headings.`}
       recommendations={recommendations}
       currentKey="current_h1"
       proposedKey="proposed_h1"
-    />
-    <OnPageRecommendations recommendations={recommendations} />
-    <AltTextRecommendations items={altText} />
+    />}
+    {recommendations.length > 0 && <OnPageRecommendations recommendations={recommendations} />}
+    {altText.length > 0 && <AltTextRecommendations items={altText} />}
     {pageExperience.length > 0 && <PageSpeedResults results={pageExperience} errors={errors} />}
   </>;
+}
+
+function PageRecommendationsUnavailable() {
+  return <section className="card report-section analysis-notice">
+    <div className="section-title"><div><h2>Page-level recommendations unavailable</h2><p>Cloudflare blocked both Screaming Frog and browser-style requests from Render. Semrush supplies the technical findings in this report, but current titles, descriptions, headings, body copy, and image context require a local crawl import.</p></div></div>
+  </section>;
 }
 
 function CrawlCoverage({ summary }: { summary: AuditSummary }) {
