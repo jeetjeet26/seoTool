@@ -173,6 +173,36 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertEqual(len(agent.prompts), 2)
         self.assertIn("VALIDATION FAILURE", agent.prompts[1][1])
 
+    def test_unchanged_title_gets_a_distinct_p11_fallback(self):
+        unchanged = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "Privacy Policy - The Terraces at Walnut",
+                    "meta_description": "Learn how The Terraces at Walnut handles website privacy, personal information, and data practices. Review the complete privacy policy for details.",
+                    "h1": "Privacy Policy",
+                    "content": "",
+                    "rationale": "Keeps the legal page clear.",
+                }
+            ]
+        )
+        result = ContentGenerator(
+            agent=FakeAgent(responses=[unchanged, unchanged]),
+        ).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://terracesatwalnut.com/privacy-policy/",
+                    "title": "Privacy Policy - The Terraces at Walnut",
+                    "meta_description": "Current privacy description.",
+                    "h1": "Privacy Policy",
+                }
+            ]
+        )[0]
+        self.assertEqual(
+            result["proposed_title"],
+            "The Terraces at Walnut - Privacy Policy",
+        )
+
     def test_one_off_returns_single_result(self):
         generator = ContentGenerator(agent=FakeAgent())
         result = generator.generate_one_off(

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from typing import Callable, Iterable
+from urllib.parse import urlsplit
 
 from modules.agent import SEOAgent
 
@@ -203,11 +204,14 @@ Return ONLY a JSON array. One object per page with keys:
     ) -> dict:
         proposed_title = _clean(entry.get("title"))
         proposed_description = _clean(entry.get("meta_description"))
+        current_title = _clean(page.get("title"))
+        if mode == "existing" and proposed_title == current_title:
+            proposed_title = _distinct_title(current_title, page)
         result = {
             "url": page.get("url", ""),
             "mode": mode,
             "keywords": page.get("keywords") or [],
-            "current_title": _clean(page.get("title")),
+            "current_title": current_title,
             "current_meta_description": _clean(page.get("meta_description")),
             "current_h1": _clean(page.get("h1")),
             "current_body_word_count": int(page.get("body_word_count") or 0),
@@ -345,6 +349,25 @@ def _all_metadata_rewritten(parsed: list[dict], pages: list[dict]) -> bool:
         ):
             return False
     return True
+
+
+def _distinct_title(current_title: str, page: dict) -> str:
+    for separator in (" - ", " | ", ": "):
+        parts = current_title.split(separator)
+        if len(parts) == 2:
+            candidate = f"{parts[1]} - {parts[0]}"
+            if candidate != current_title and len(candidate) <= TITLE_MAX:
+                return candidate
+    keyword = _clean((page.get("keywords") or [""])[0]).title()
+    hostname = (urlsplit(str(page.get("url") or "")).hostname or "").removeprefix(
+        "www."
+    )
+    brand = hostname.split(".", 1)[0].replace("-", " ").title()
+    if keyword and brand:
+        candidate = f"{keyword} - {brand}"
+        if len(candidate) <= TITLE_MAX:
+            return candidate
+    return f"{current_title[: TITLE_MAX - 9].rstrip()} - Updated"
 
 
 def _clean(value) -> str:
