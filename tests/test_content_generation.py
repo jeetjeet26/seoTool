@@ -133,6 +133,46 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("new proposed meta description for every page", user_prompt)
         self.assertIn("otherwise return the current H1", user_prompt)
 
+    def test_retries_when_existing_metadata_is_returned_unchanged(self):
+        unchanged = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "h1": "Current H1",
+                    "content": "",
+                    "rationale": "No change.",
+                }
+            ]
+        )
+        corrected = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "New homes in Dallas - Example",
+                    "meta_description": "Discover new homes in Dallas with modern plans and thoughtful community features. Explore available homes and schedule your visit today.",
+                    "h1": "Current H1",
+                    "content": "",
+                    "rationale": "Targets the approved keyword.",
+                }
+            ]
+        )
+        agent = FakeAgent(responses=[unchanged, corrected])
+        result = ContentGenerator(agent=agent).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "h1": "Current H1",
+                }
+            ]
+        )[0]
+        self.assertEqual(result["proposed_title"], "New homes in Dallas - Example")
+        self.assertEqual(len(agent.prompts), 2)
+        self.assertIn("VALIDATION FAILURE", agent.prompts[1][1])
+
     def test_one_off_returns_single_result(self):
         generator = ContentGenerator(agent=FakeAgent())
         result = generator.generate_one_off(

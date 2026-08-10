@@ -84,12 +84,24 @@ class ContentGenerator:
             )
 
         parsed: list[dict] | None = None
-        for _attempt in range(2):
+        for attempt in range(2):
+            attempt_prompt = prompt
+            if attempt:
+                attempt_prompt += (
+                    "\n\nVALIDATION FAILURE TO CORRECT: Every page must have a "
+                    "non-empty proposed title and meta description, and each must "
+                    "differ materially from its current value. Return the complete "
+                    "corrected JSON array."
+                )
             response = self.agent._get_completion(
-                system_prompt, prompt, max_tokens=6000
+                system_prompt, attempt_prompt, max_tokens=6000
             )
             parsed = _parse_json_array(response)
-            if parsed is not None:
+            if parsed is not None and (
+                mode != "existing"
+                or _all_metadata_rewritten(parsed, chunk)
+                or attempt == 1
+            ):
                 break
         if parsed is None:
             return [
@@ -313,6 +325,26 @@ def _parse_json_array(response: str) -> list[dict] | None:
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, list) else None
+
+
+def _all_metadata_rewritten(parsed: list[dict], pages: list[dict]) -> bool:
+    by_index = {
+        item.get("index"): item
+        for item in parsed
+        if isinstance(item, dict)
+    }
+    for index, page in enumerate(pages, start=1):
+        item = by_index.get(index) or {}
+        proposed_title = _clean(item.get("title"))
+        proposed_description = _clean(item.get("meta_description"))
+        if (
+            not proposed_title
+            or not proposed_description
+            or proposed_title == _clean(page.get("title"))
+            or proposed_description == _clean(page.get("meta_description"))
+        ):
+            return False
+    return True
 
 
 def _clean(value) -> str:
