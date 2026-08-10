@@ -115,6 +115,24 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("6 words", user_prompt)
         self.assertEqual(results[0]["current_body_word_count"], 6)
 
+    def test_existing_mode_requires_title_and_description_rewrites_for_every_page(self):
+        agent = FakeAgent()
+        generator = ContentGenerator(agent=agent)
+        generator.generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "h1": "Current H1",
+                }
+            ]
+        )
+        _system, user_prompt = agent.prompts[0]
+        self.assertIn("new proposed title", user_prompt)
+        self.assertIn("new proposed meta description for every page", user_prompt)
+        self.assertIn("otherwise return the current H1", user_prompt)
+
     def test_one_off_returns_single_result(self):
         generator = ContentGenerator(agent=FakeAgent())
         result = generator.generate_one_off(

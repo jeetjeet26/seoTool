@@ -150,10 +150,12 @@ class ContentGenerator:
             )
         else:
             task = (
-                "These pages belong to a live website. Propose an improved title, "
-                "meta description, or H1 only where the current value is missing, "
-                "duplicated, off-target, or violates the approved style guide. "
-                "Otherwise return the current value unchanged. "
+                "These pages belong to a live website. Write a new proposed title "
+                "and a new proposed meta description for every page. Both must "
+                "differ materially from the current value while following the "
+                "approved style guide and assigned keyword. Propose a different H1 "
+                "only where the current H1 is missing, duplicated, off-target, or "
+                "violates the approved style guide; otherwise return the current H1. "
                 "Analyze the supplied visible body copy for search intent, topical "
                 "depth, clarity, and keyword alignment. Include a specific 2-3 "
                 "sentence replacement or addition in the content field only when "
