@@ -1,17 +1,48 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 
 import { queueAudit, type QueueAuditState } from "@/actions/audits";
+import { uploadCrawlFiles } from "@/lib/crawl-import-client";
 
 const initialState: QueueAuditState = {};
 
 export function AuditForm() {
   const [state, action, pending] = useActionState(queueAudit, initialState);
+  const [crawlSource, setCrawlSource] = useState("cloud");
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const processedAudit = useRef("");
+
+  useEffect(() => {
+    if (
+      !state.auditId
+      || !state.uploadMode
+      || !files.length
+      || processedAudit.current === state.auditId
+    ) return;
+    processedAudit.current = state.auditId;
+    setUploading(true);
+    uploadCrawlFiles(state.auditId, files, state.uploadMode, setUploadMessage)
+      .then(() => {
+        window.location.assign(`/audits/${state.auditId}`);
+      })
+      .catch((error) => {
+        processedAudit.current = "";
+        setUploadMessage(
+          error instanceof Error ? error.message : "The crawl upload failed.",
+        );
+      })
+      .finally(() => setUploading(false));
+  }, [files, state.auditId, state.uploadMode]);
+
   return (
     <form className="form-card" action={action}>
-      {state.message && <div className="notice success" role="status"><strong>Audit queued.</strong><span>{state.message}</span></div>}
+      <input type="hidden" name="hasLocalUpload" value={files.length ? "yes" : "no"} />
+      {state.message && <div className="notice success" role="status"><strong>{state.auditId ? "Audit created." : "Audit queued."}</strong><span>{state.message}</span></div>}
       {state.error && <div className="notice" role="alert"><strong>Unable to queue audit.</strong><span>{state.error}</span></div>}
+      {uploadMessage && <div className="notice success" role="status"><strong>Local crawl upload</strong><span>{uploadMessage}</span></div>}
       <div className="form-section">
         <div><span className="step-number">1</span><h2>Target</h2><p>Enter the client and starting URL.</p></div>
         <div className="fields">
@@ -33,6 +64,28 @@ export function AuditForm() {
         <div><span className="step-number">2</span><h2>Report settings</h2><p>Choose the P11 deliverable and crawl depth.</p></div>
         <div className="fields">
           <label>
+            Crawl source
+            <select name="crawlSource" value={crawlSource} onChange={(event) => {
+              setCrawlSource(event.target.value);
+              if (event.target.value === "cloud") setFiles([]);
+            }}>
+              <option value="cloud">Cloud Screaming Frog crawl</option>
+              <option value="local">Upload local Screaming Frog crawl instead</option>
+              <option value="cloud_fallback">Cloud crawl with optional local fallback</option>
+            </select>
+          </label>
+          {crawlSource !== "cloud" && <label>
+            Screaming Frog exports <span className="label-hint">{crawlSource === "local" ? "Required" : "Optional fallback"} · one ZIP or individual CSV files</span>
+            <input
+              type="file"
+              accept=".zip,.csv,text/csv,application/zip"
+              multiple
+              disabled={pending || uploading}
+              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            />
+            {files.length > 0 && <small>{files.length} file{files.length === 1 ? "" : "s"} selected</small>}
+          </label>}
+          <label>
             Report variant
             <select name="reportVariant" defaultValue="full_client">
               <option value="full_client">Full client report (7 sections)</option>
@@ -49,7 +102,7 @@ export function AuditForm() {
           </details>
         </div>
       </div>
-      <div className="form-actions"><a className="button secondary" href="/dashboard">Cancel</a><button className="button primary" type="submit" disabled={pending}>{pending ? "Queueing…" : "Start audit"}</button></div>
+      <div className="form-actions"><a className="button secondary" href="/dashboard">Cancel</a><button className="button primary" type="submit" disabled={pending || uploading}>{pending ? "Creating…" : uploading ? "Uploading…" : "Start audit"}</button></div>
     </form>
   );
 }

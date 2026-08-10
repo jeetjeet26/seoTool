@@ -8,6 +8,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 export interface QueueAuditState {
   message?: string;
   error?: string;
+  auditId?: string;
+  uploadMode?: "local" | "fallback";
 }
 
 export async function queueAudit(
@@ -23,6 +25,8 @@ export async function queueAudit(
   ).trim();
   const pageLimit = Number(formData.get("pageLimit"));
   const reportVariant = String(formData.get("reportVariant") ?? "full_client");
+  const crawlSource = String(formData.get("crawlSource") ?? "cloud");
+  const hasLocalUpload = formData.get("hasLocalUpload") === "yes";
 
   if (!clientName || !targetUrl || !targetCity) {
     return { error: "Client name, website URL, and city are required." };
@@ -56,6 +60,13 @@ export async function queueAudit(
   if (!["full_client", "in_house"].includes(reportVariant)) {
     return { error: "Choose a valid report variant." };
   }
+  if (!["cloud", "local", "cloud_fallback"].includes(crawlSource)) {
+    return { error: "Choose a valid crawl source." };
+  }
+  if (crawlSource === "local" && !hasLocalUpload) {
+    return { error: "Choose a Screaming Frog ZIP or CSV files for local import." };
+  }
+  const awaitingUpload = hasLocalUpload && crawlSource !== "cloud";
 
   if (!isSupabaseConfigured) {
     return { error: "Supabase is not configured." };
@@ -109,9 +120,10 @@ export async function queueAudit(
       options: {
         competitor_domains: competitorDomains,
         report_variant: reportVariant,
+        crawl_source: crawlSource,
       },
-      status: "queued",
-      current_stage: "queued",
+      status: awaitingUpload ? "draft" : "queued",
+      current_stage: awaitingUpload ? "awaiting_upload" : "queued",
       requested_by: claimsData.claims.sub,
     })
     .select("id")
@@ -121,6 +133,13 @@ export async function queueAudit(
     return { error: "The audit could not be queued. Please try again." };
   }
 
+  if (awaitingUpload) {
+    return {
+      auditId: data.id,
+      uploadMode: crawlSource === "local" ? "local" : "fallback",
+      message: "Audit created. Uploading local crawl files.",
+    };
+  }
   redirect(`/audits/${data.id}`);
 }
 

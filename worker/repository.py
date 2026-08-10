@@ -188,7 +188,7 @@ class WorkerRepository:
                     heartbeat_at = now(),
                     summary = %s::jsonb,
                     failure_message = null,
-                    options = options - 'crawl_import_paths'
+                    options = options - 'crawl_import_paths' - 'crawl_fallback_paths'
                 where id = %s and claimed_by = %s
                 """,
                 (json.dumps(summary, default=_json_default), audit_id, self.worker_id),

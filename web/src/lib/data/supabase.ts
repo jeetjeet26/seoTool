@@ -117,6 +117,7 @@ function mapToolRun(row: ToolRunRow): ToolRun {
 
 function auditStatus(row: AuditRow): AuditStatus {
   if (row.published_at) return "published";
+  if (row.status === "draft") return "draft";
   if (row.status === "failed") return "failed";
   if (row.status === "cancelled") return "cancelled";
   if (row.status === "running") return "running";

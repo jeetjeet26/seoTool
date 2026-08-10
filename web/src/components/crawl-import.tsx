@@ -1,15 +1,8 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
 import { useState } from "react";
 
-type UploadAuthorization = {
-  name: string;
-  size: number;
-  type: string;
-  path: string;
-  token: string;
-};
+import { uploadCrawlFiles } from "@/lib/crawl-import-client";
 
 export function CrawlImport({ auditId }: { auditId: string }) {
   const [files, setFiles] = useState<File[]>([]);
@@ -21,54 +14,7 @@ export function CrawlImport({ auditId }: { auditId: string }) {
     setUploading(true);
     setMessage("Preparing secure upload…");
     try {
-      const authorizationResponse = await fetch(
-        `/api/audits/${auditId}/crawl-import`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            action: "create",
-            files: files.map(fileDescriptor),
-          }),
-        },
-      );
-      const authorization = await authorizationResponse.json();
-      if (!authorizationResponse.ok) {
-        throw new Error(authorization.error ?? "Upload could not be prepared.");
-      }
-      const uploads = authorization.uploads as UploadAuthorization[];
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-      );
-      for (let index = 0; index < uploads.length; index += 1) {
-        setMessage(`Uploading ${index + 1} of ${uploads.length}…`);
-        const upload = uploads[index];
-        const file = files[index];
-        if (!file) throw new Error(`Missing selected file: ${upload.name}`);
-        const { error } = await supabase.storage
-          .from("audit-artifacts")
-          .uploadToSignedUrl(upload.path, upload.token, file, {
-            contentType: upload.type,
-          });
-        if (error) throw error;
-      }
-      setMessage("Queueing imported crawl for analysis…");
-      const finalizeResponse = await fetch(
-        `/api/audits/${auditId}/crawl-import`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            action: "finalize",
-            files: uploads,
-          }),
-        },
-      );
-      const finalized = await finalizeResponse.json();
-      if (!finalizeResponse.ok) {
-        throw new Error(finalized.error ?? "Import could not be queued.");
-      }
+      await uploadCrawlFiles(auditId, files, "local", setMessage);
       setMessage("Import uploaded. The audit is queued for reprocessing.");
       window.location.reload();
     } catch (error) {
@@ -107,12 +53,4 @@ export function CrawlImport({ auditId }: { auditId: string }) {
       {message && <p className="inline-message" role="status">{message}</p>}
     </div>
   </section>;
-}
-
-function fileDescriptor(file: File) {
-  return {
-    name: file.name,
-    size: file.size,
-    type: file.type || "application/octet-stream",
-  };
 }

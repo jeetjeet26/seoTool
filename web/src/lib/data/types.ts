@@ -1,4 +1,5 @@
 export type AuditStatus =
+  | "draft"
   | "queued"
   | "running"
   | "review"

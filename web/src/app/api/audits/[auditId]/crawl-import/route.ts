@@ -101,6 +101,13 @@ export async function POST(
   }
 
   await supabase.from("findings").delete().eq("audit_id", auditId);
+  const mode = body.mode === "fallback" ? "fallback" : "local";
+  const importOptions = { ...(audit.options ?? {}) };
+  delete importOptions.crawl_import_paths;
+  delete importOptions.crawl_fallback_paths;
+  importOptions[
+    mode === "fallback" ? "crawl_fallback_paths" : "crawl_import_paths"
+  ] = files.map((file) => file.path);
   const { error: queueError } = await supabase
     .from("audits")
     .update({
@@ -109,10 +116,7 @@ export async function POST(
       progress: 0,
       failure_message: null,
       completed_at: null,
-      options: {
-        ...(audit.options ?? {}),
-        crawl_import_paths: files.map((file) => file.path),
-      },
+      options: importOptions,
     })
     .eq("id", auditId);
   if (queueError) {

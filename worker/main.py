@@ -82,6 +82,8 @@ def process_job(
     try:
         with heartbeat(repository, job.id):
             import_paths = list(job.options.get("crawl_import_paths") or [])
+            fallback_paths = list(job.options.get("crawl_fallback_paths") or [])
+            used_local_import = bool(import_paths)
             if import_paths:
                 artifacts.download_crawl_imports(
                     job.id,
@@ -102,6 +104,22 @@ def process_job(
                     work_dir=audit_root,
                     finalize=False,
                 )
+                if fallback_paths and not _has_valid_html_export(
+                    job_dir / "crawl" / "internal_all.csv"
+                ):
+                    shutil.rmtree(job_dir / "crawl", ignore_errors=True)
+                    artifacts.download_crawl_imports(
+                        job.id,
+                        fallback_paths,
+                        job_dir / "crawl",
+                    )
+                    result = service.run_from_exports(
+                        audit_id=job.id,
+                        url=job.target_url,
+                        city=job.location,
+                        work_dir=audit_root,
+                    )
+                    used_local_import = True
             repository.record_progress(
                 ProgressEvent(
                     audit_id=job.id,
@@ -112,6 +130,16 @@ def process_job(
                 )
             )
             insight_data = insight_runner.run(job, job_dir / "crawl")
+            if used_local_import:
+                insight_data["crawl_coverage"] = {
+                    **(insight_data.get("crawl_coverage") or {}),
+                    "mode": "screaming_frog_import",
+                    "screaming_frog": "complete",
+                    "pages": int(
+                        (insight_data.get("site_inventory") or {}).get("page_count")
+                        or 0
+                    ),
+                }
             valid_pages = int(
                 (insight_data.get("site_inventory") or {}).get("page_count") or 0
             )
@@ -302,6 +330,20 @@ def _count_csv_rows(path: Path) -> int:
         return 0
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         return sum(1 for _ in csv.DictReader(stream))
+
+
+def _has_valid_html_export(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        for row in csv.DictReader(stream):
+            status = str(row.get("Status Code") or "").strip()
+            content_type = str(row.get("Content Type") or "").lower()
+            if status in {"", "200", "200.0"} and (
+                not content_type or "html" in content_type
+            ):
+                return True
+    return False
 
 
 def _health_score(severity_counts: Counter, pages_scanned: int) -> int:
