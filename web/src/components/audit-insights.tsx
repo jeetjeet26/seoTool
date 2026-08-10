@@ -221,10 +221,10 @@ function WordDiff({ current, proposed }: { current: string; proposed: string }) 
   const currentWords = current.split(/\s+/).filter(Boolean);
   const proposedWords = proposed.split(/\s+/).filter(Boolean);
   const currentSet = new Set(currentWords.map(normalizeWord));
-  return <>{proposedWords.map((word, index) => {
+  return <div className="word-diff">{proposedWords.map((word, index) => {
     const changed = !currentSet.has(normalizeWord(word));
     return <span key={`${word}-${index}`}>{index ? " " : ""}{changed ? <mark><strong>{word}</strong></mark> : word}</span>;
-  })}</>;
+  })}</div>;
 }
 
 function normalizeWord(value: string) {
