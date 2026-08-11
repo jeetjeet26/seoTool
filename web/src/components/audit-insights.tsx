@@ -22,9 +22,34 @@ export function AuditInsights({
   summary: AuditSummary;
   approvedTargets?: ApprovedTarget[];
 }) {
-  const keywords = summary.keyword_strategy ?? [];
-  const recommendations = summary.content_recommendations ?? [];
-  const altText = summary.alt_text_recommendations ?? [];
+  const propertyName = summary.property_context?.name ?? "";
+  const applyPropertyCasing = (value?: string) => restorePropertyCasing(value, propertyName);
+  const keywords = (summary.keyword_strategy ?? []).map((item) => ({
+    ...item,
+    keyword: applyPropertyCasing(item.keyword),
+  }));
+  const recommendations = (summary.content_recommendations ?? []).map((item) => ({
+    ...item,
+    current_title: applyPropertyCasing(item.current_title),
+    current_h1: applyPropertyCasing(item.current_h1),
+    current_meta_description: applyPropertyCasing(item.current_meta_description),
+    keywords: item.keywords?.map(applyPropertyCasing),
+    proposed_title: applyPropertyCasing(item.proposed_title),
+    proposed_h1: applyPropertyCasing(item.proposed_h1),
+    proposed_meta_description: applyPropertyCasing(item.proposed_meta_description),
+    proposed_content: applyPropertyCasing(item.proposed_content),
+    current_body_text: applyPropertyCasing(item.current_body_text),
+    rationale: applyPropertyCasing(item.rationale),
+  }));
+  const altText = (summary.alt_text_recommendations ?? []).map((item) => ({
+    ...item,
+    current_alt_text: applyPropertyCasing(item.current_alt_text),
+    proposed_alt_text: applyPropertyCasing(item.proposed_alt_text),
+  }));
+  const targets = approvedTargets.map((target) => ({
+    ...target,
+    keyword: applyPropertyCasing(target.keyword),
+  }));
   const pageExperience = summary.page_experience ?? [];
   const errors = summary.enrichment_errors ?? [];
   const pageAnalysisUnavailable =
@@ -37,7 +62,7 @@ export function AuditInsights({
     <CrawlCoverage summary={summary} />
     <SiteInventory summary={summary} />
     <SemrushSiteAudit summary={summary} />
-    <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={approvedTargets} />
+    <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={targets} />
     <SearchVisibility summary={summary} />
     {pageAnalysisUnavailable && <PageRecommendationsUnavailable />}
     {recommendations.length > 0 && <RecommendationSection
@@ -163,6 +188,7 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
 
 function SearchVisibility({ summary }: { summary: AuditSummary }) {
   const semrush = summary.semrush ?? {};
+  const communities = summary.competitor_communities ?? [];
   const competitors = summary.competitors ?? [];
   const backlinks = summary.backlinks ?? {};
   return <section className="card report-section">
@@ -172,10 +198,12 @@ function SearchVisibility({ summary }: { summary: AuditSummary }) {
       {Object.entries(backlinks).map(([key, value]) => <article key={key}><span>{humanize(key)}</span><strong>{formatNumber(value)}</strong></article>)}
     </div>
     <div className="subsection">
-      <h3>Compare domains</h3>
-      {competitors.length
-        ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Source</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.source === "provided" ? "Provided" : "Semrush"}</td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
-        : <EmptyState text="No competitor domains were provided and Semrush did not discover enough organic overlap for this audit."/>}
+      <h3>{communities.length ? "Selected competitor communities" : "Compare domains"}</h3>
+      {communities.length
+        ? <div className="table-wrap"><table><thead><tr><th>Community</th><th>Builder</th><th>Location</th><th>Distance</th><th>Verification</th><th>Website</th></tr></thead><tbody>{communities.map((item) => <tr key={item.place_id || `${item.name}-${item.location}`}><td><strong>{item.name}</strong></td><td>{item.builder || "—"}</td><td>{item.location}</td><td>{item.distance_miles === undefined ? "—" : `${formatNumber(item.distance_miles)} mi`}</td><td>{item.resolution_status === "verified" ? "Google verified" : "Provided"}</td><td className="url-cell"><ReportLink url={item.url}/></td></tr>)}</tbody></table></div>
+        : competitors.length
+          ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Source</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.source === "provided" ? "Provided" : "Semrush"}</td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
+          : <EmptyState text="No competitor communities or domains were provided for this audit."/>}
     </div>
   </section>;
 }
@@ -213,7 +241,10 @@ function OnPageRecommendations({ recommendations }: { recommendations: ContentRe
   return <section className="card report-section">
     <div className="section-title"><div><h2>On-page content recommendations</h2><p>{items.length} pages with proposed copy improvements.</p></div></div>
     {items.length
-      ? <div className="long-form-recommendations">{items.map((item) => <details key={item.url}><summary>{stripProtocol(item.url)}</summary><small>{formatNumber(item.current_body_word_count)} current body words</small>{item.rationale && <p><strong>Why:</strong> {item.rationale}</p>}<p><strong>Original copy:</strong> {item.current_body_text || "Source passage unavailable"}</p><p><strong>Proposed copy:</strong> <WordDiff current={item.current_body_text ?? ""} proposed={item.proposed_content ?? ""}/></p></details>)}</div>
+      ? <div className="long-form-recommendations">{items.map((item) => {
+        const isNewBlock = item.content_action === "new_block" || !item.current_body_text;
+        return <details key={item.url}><summary>{stripProtocol(item.url)}</summary><small>{formatNumber(item.current_body_word_count)} current body words · {isNewBlock ? "New paragraph block" : "Light paragraph rewrite"}</small>{item.rationale && <p><strong>Why:</strong> {item.rationale}</p>}<p><strong>{isNewBlock ? "Placement:" : "Original paragraph:"}</strong> {isNewBlock ? "Add this as a new, short introductory paragraph." : item.current_body_text}</p><p><strong>{isNewBlock ? "Suggested new block:" : "Light rewrite:"}</strong> <WordDiff current={item.current_body_text ?? ""} proposed={item.proposed_content ?? ""}/></p></details>;
+      })}</div>
       : <EmptyState text="No on-page copy changes were proposed."/>}
   </section>;
 }
@@ -278,4 +309,25 @@ function formatNumber(value: unknown) {
   if (typeof value === "number") return new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
   return value === undefined || value === null || value === "" ? "—" : String(value);
 }
+
+function restorePropertyCasing(value: string | undefined, propertyName: string) {
+  if (!value || !propertyName) return value ?? "";
+  const terms = propertyName.match(/[a-z0-9]+(?:['’-][a-z0-9]+)*/gi) ?? [];
+  return terms
+    .filter((term) => term.length > 2 && !PROPERTY_NAME_STOP_WORDS.has(term.toLowerCase()))
+    .sort((left, right) => right.length - left.length)
+    .reduce(
+      (result, term) => result.replace(
+        new RegExp(`\\b${escapeRegExp(term)}\\b`, "gi"),
+        term,
+      ),
+      value,
+    );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const PROPERTY_NAME_STOP_WORDS = new Set(["and", "the", "for", "with", "from"]);
 

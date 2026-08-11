@@ -27,6 +27,8 @@ class PageContentTests(unittest.TestCase):
         self.assertIn("Schedule a tour", text)
         self.assertNotIn("Home Services Contact", text)
         self.assertNotIn("Privacy policy", text)
+        self.assertIn("Discover thoughtfully designed", parser.rewrite_block())
+        self.assertNotIn("Schedule a tour", parser.rewrite_block())
 
     def test_batch_fetch_isolates_page_failures(self):
         with patch(

@@ -12,16 +12,58 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-TRANSACTIONAL_MARKERS = (
-    "for rent",
-    "rent ",
-    " rentals",
+SHARED_TRANSACTIONAL_MARKERS = (
     "specials",
     "tour",
     "apply",
     "availability",
+    "available now",
     "move in",
+    "move-in",
+    "contact",
 )
+TRANSACTIONAL_MARKERS_BY_VERTICAL = {
+    "multifamily": (
+        "for rent",
+        "rent ",
+        " rentals",
+        "lease",
+        "leasing",
+    ),
+    "senior_housing": (
+        "pricing",
+        "for rent",
+        "lease",
+    ),
+    "senior_living": (
+        "pricing",
+        "for rent",
+        "lease",
+    ),
+    "new_homes": (
+        "for sale",
+        "buy ",
+        "purchase",
+        "quick move-in",
+        "move-in ready",
+        "contact builder",
+    ),
+    "master_planned": (
+        "for sale",
+        "buy ",
+        "purchase",
+        "quick move-in",
+        "move-in ready",
+        "contact builder",
+    ),
+    "luxury_living": (
+        "for sale",
+        "buy ",
+        "purchase",
+        "for rent",
+        "lease",
+    ),
+}
 INFORMATIONAL_MARKERS = ("what", "how", "why", "cost of", "average", "guide")
 HOUSING_MARKERS = (
     "apartment",
@@ -129,6 +171,7 @@ def seed_phrases(
             f"senior apartments {location}",
             f"active adult apartments {location}",
             f"55 plus communities {location}",
+            f"senior living availability {location}",
         ]
     elif vertical == "master_planned":
         phrases = [
@@ -143,6 +186,7 @@ def seed_phrases(
             f"luxury residences {location}",
             f"luxury living {location}",
             f"luxury communities {location}",
+            f"luxury residences availability {location}",
         ]
     elif vertical == "corporate":
         phrases = []
@@ -163,7 +207,11 @@ def seed_phrases(
     return phrases
 
 
-def classify_intent(keyword: str, brand_tokens: set[str]) -> str:
+def classify_intent(
+    keyword: str,
+    brand_tokens: set[str],
+    vertical: str = "multifamily",
+) -> str:
     """Heuristic search-intent codes matching the report convention.
 
     navigational (brand), transactional, informational, or commercial.
@@ -172,7 +220,11 @@ def classify_intent(keyword: str, brand_tokens: set[str]) -> str:
     tokens = set(re.findall(r"[a-z0-9]+", lowered))
     if brand_tokens and brand_tokens & tokens:
         return "navigational"
-    if any(marker in lowered for marker in TRANSACTIONAL_MARKERS):
+    transactional_markers = (
+        *SHARED_TRANSACTIONAL_MARKERS,
+        *TRANSACTIONAL_MARKERS_BY_VERTICAL.get(vertical, ()),
+    )
+    if any(marker in lowered for marker in transactional_markers):
         return "transactional"
     if any(lowered.strip().startswith(marker) for marker in INFORMATIONAL_MARKERS):
         return "informational"
@@ -476,7 +528,7 @@ def build_keyword_strategy(
 
     candidates = list(merged.values())
     for candidate in candidates:
-        candidate.intent = classify_intent(candidate.keyword, brand_tokens)
+        candidate.intent = classify_intent(candidate.keyword, brand_tokens, vertical)
         if candidate.source == "approved":
             candidate.score = 100.0
         else:

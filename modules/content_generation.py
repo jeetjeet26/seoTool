@@ -14,6 +14,7 @@ Two modes:
 from __future__ import annotations
 
 import json
+from difflib import SequenceMatcher
 from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
@@ -129,6 +130,7 @@ class ContentGenerator:
             keywords = ", ".join(page.get("keywords") or [])
             body_text = _clean(page.get("body_text"))
             body_word_count = int(page.get("body_word_count") or 0)
+            rewrite_block = _clean(page.get("rewrite_block"))
             lines.append(
                 f"{position + 1}. URL: {page.get('url', '')}\n"
                 f"   Target keywords: {keywords or 'infer from URL'}\n"
@@ -136,7 +138,9 @@ class ContentGenerator:
                 f"   Current meta description: {page.get('meta_description') or 'None'}\n"
                 f"   Current H1: {page.get('h1') or 'None'}\n"
                 f"   Current visible body copy ({body_word_count} words): "
-                f"{body_text or 'Unavailable'}"
+                f"{body_text or 'Unavailable'}\n"
+                f"   Paragraph block eligible for a light rewrite: "
+                f"{rewrite_block or 'None available'}"
             )
         pages_text = "\n".join(lines)
 
@@ -170,11 +174,14 @@ class ContentGenerator:
                 "only where the current H1 is missing, duplicated, off-target, or "
                 "violates the approved style guide; otherwise return the current H1. "
                 "Analyze the supplied visible body copy for search intent, topical "
-                "depth, clarity, and keyword alignment. Include a specific 2-3 "
-                "sentence replacement or addition in the content field only when "
-                "copy is thin, generic, missing, or fails to serve an approved "
-                "target query. Preserve roughly 80% of the original passage and "
-                "make the smallest useful keyword change. "
+                "depth, clarity, and keyword alignment. When a paragraph block is "
+                "available, return that complete paragraph with only a light edit: "
+                "change no more than 3-7 words, or preserve it and append one short "
+                "sentence. Do not rewrite the entire page or expand the paragraph. "
+                "When no paragraph block is available and copy is genuinely missing, "
+                "you may propose one short new paragraph and set content_action to "
+                "'new_block'. Otherwise use 'rewrite_block' for a light paragraph "
+                "edit or 'none' when no copy change is needed. "
                 "Return an empty content field only when the current body copy "
                 "already serves the target query well."
             )
@@ -186,6 +193,7 @@ Rules:
 - Meta descriptions must be {DESCRIPTION_MIN}-{DESCRIPTION_MAX} characters.
 - Use one spaced hyphen as the preferred title separator. Never use em/en dashes, curly quotes, ellipses, or stacked separators.
 - Do not introduce a keyword that is not assigned to the page.
+- Keep on-page edits minimal: at most seven altered words or one short added sentence.
 - Use only facts from the approved client context below. Never invent amenities, prices, or availability.
 {"- All copy must follow the supplied Fair Housing safeguards." if client_context.get("fair_housing_enabled") else ""}
 
@@ -196,7 +204,8 @@ Pages:
 {pages_text}
 
 Return ONLY a JSON array. One object per page with keys:
-"index" (1-based), "title", "meta_description", "h1", "content" (may be ""), "rationale" (one sentence).
+"index" (1-based), "title", "meta_description", "h1", "content" (may be ""),
+"content_action" ("rewrite_block", "new_block", or "none"), "rationale" (one sentence).
 """
 
     def _item_result(
@@ -205,6 +214,25 @@ Return ONLY a JSON array. One object per page with keys:
         proposed_title = _clean(entry.get("title"))
         proposed_description = _clean(entry.get("meta_description"))
         current_title = _clean(page.get("title"))
+        current_block = _clean(page.get("rewrite_block"))
+        proposed_content = _clean(entry.get("content"))
+        content_action = "none"
+        content_warning = ""
+        if proposed_content:
+            if current_block:
+                if _is_light_rewrite(current_block, proposed_content):
+                    content_action = "rewrite_block"
+                else:
+                    proposed_content = ""
+                    content_warning = "content_change_too_large"
+            elif len(proposed_content.split()) <= 35:
+                content_action = "new_block"
+            else:
+                proposed_content = ""
+                content_warning = "new_content_block_too_large"
+        rationale = _clean(entry.get("rationale"))
+        if content_action == "new_block" and "new" not in rationale.lower():
+            rationale = f"New paragraph block: {rationale}".strip()
         if mode == "existing" and proposed_title == current_title:
             proposed_title = _distinct_title(current_title, page)
         result = {
@@ -218,14 +246,17 @@ Return ONLY a JSON array. One object per page with keys:
             "proposed_title": proposed_title,
             "proposed_meta_description": proposed_description,
             "proposed_h1": _clean(entry.get("h1")),
-            "proposed_content": _clean(entry.get("content")),
-            "rationale": _clean(entry.get("rationale")),
+            "proposed_content": proposed_content,
+            "content_action": content_action,
+            "rationale": rationale,
             "title_length": len(proposed_title),
             "meta_description_length": len(proposed_description),
             "warnings": validate_metadata(proposed_title, proposed_description),
         }
+        if content_warning:
+            result["warnings"].append(content_warning)
         if result["proposed_content"]:
-            result["current_body_text"] = _clean(page.get("body_text"))
+            result["current_body_text"] = current_block
         if error:
             result["error"] = error
         return result
@@ -349,6 +380,28 @@ def _all_metadata_rewritten(parsed: list[dict], pages: list[dict]) -> bool:
         ):
             return False
     return True
+
+
+def _is_light_rewrite(current: str, proposed: str) -> bool:
+    current_words = current.split()
+    proposed_words = proposed.split()
+    if current_words == proposed_words:
+        return False
+    matcher = SequenceMatcher(
+        None,
+        [word.lower() for word in current_words],
+        [word.lower() for word in proposed_words],
+    )
+    altered = 0
+    for tag, left_start, left_end, right_start, right_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        altered += max(left_end - left_start, right_end - right_start)
+    if altered <= 7:
+        return True
+    if proposed_words[: len(current_words)] == current_words:
+        return len(proposed_words) - len(current_words) <= 18
+    return False
 
 
 def _distinct_title(current_title: str, page: dict) -> str:

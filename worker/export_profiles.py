@@ -438,6 +438,12 @@ def build_client_workbook(
             entries = [
                 ("Page:", item.get("url", "")),
                 ("Targeted Keyword(s):", "; ".join(item.get("keywords") or [])),
+                (
+                    "Recommendation Type:",
+                    "New paragraph block"
+                    if item.get("content_action") == "new_block"
+                    else "Light paragraph rewrite",
+                ),
                 ("Original Copy:", item.get("current_body_text") or ""),
                 ("Proposed Copy:", item.get("proposed_content") or item.get("content", "")),
             ]

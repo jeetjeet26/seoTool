@@ -87,6 +87,14 @@ class ToolRunner:
             raise ValueError("target_url and location are required")
         client = self.repository.get_client_context(run.client_id)
         property_name = str(options.get("property_name") or client.get("name") or "")
+        vertical = str(
+            options.get("community_type")
+            or options.get("vertical")
+            or client.get("vertical")
+            or "multifamily"
+        )
+        if vertical == "senior_housing":
+            vertical = "senior_living"
 
         self.repository.record_progress(run.id, "research", 10, "Pulling Semrush data")
         domain = urlsplit(target_url).hostname or ""
@@ -95,7 +103,7 @@ class ToolRunner:
         backlinks = self.semrush.get_backlinks_overview(domain)
 
         related: list[dict] = []
-        seeds = seed_phrases(location, property_name)
+        seeds = seed_phrases(location, property_name, vertical)
         for phrase in seeds[:4]:
             related.extend(self.semrush.get_keyword_ideas(phrase, limit=20))
         seed_metrics = self.semrush.get_keyword_data(seeds)
@@ -115,6 +123,7 @@ class ToolRunner:
             rankings=rankings,
             related=related,
             seed_metrics=seed_metrics,
+            vertical=vertical,
             page_urls=page_urls,
             max_keywords=int(options.get("max_keywords") or 60),
         )

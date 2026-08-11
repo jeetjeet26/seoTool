@@ -65,6 +65,32 @@ class KeywordStrategyTests(unittest.TestCase):
         self.assertEqual(
             classify_intent("luxury apartments dallas", brand), "commercial"
         )
+        self.assertEqual(
+            classify_intent("new homes for sale walnut", brand, "new_homes"),
+            "transactional",
+        )
+        self.assertEqual(
+            classify_intent("new homes walnut", brand, "new_homes"), "commercial"
+        )
+
+    def test_housing_verticals_include_transactional_candidates(self):
+        cases = (
+            ("multifamily", "Dallas"),
+            ("new_homes", "Walnut"),
+            ("master_planned", "Irvine"),
+            ("senior_living", "Phoenix"),
+            ("luxury_living", "Miami"),
+        )
+        for vertical, location in cases:
+            with self.subTest(vertical=vertical):
+                results = build_keyword_strategy(
+                    location=location,
+                    target_url="https://example.com/",
+                    vertical=vertical,
+                )
+                self.assertTrue(
+                    any(item["intent"] == "transactional" for item in results)
+                )
 
     def test_page_assignment_prefers_relevant_paths(self):
         pages = [

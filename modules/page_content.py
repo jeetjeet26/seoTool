@@ -53,6 +53,9 @@ class _VisibleTextParser(HTMLParser):
         self._skip_depth = 0
         self._all_text: list[str] = []
         self._focused_text: list[str] = []
+        self._paragraph_depth = 0
+        self._paragraph_parts: list[str] = []
+        self._paragraphs: list[str] = []
 
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
@@ -61,6 +64,10 @@ class _VisibleTextParser(HTMLParser):
             self._body_depth += 1
         if tag in {"main", "article"}:
             self._focus_depth += 1
+        if tag == "p" and not self._skip_depth:
+            self._paragraph_depth += 1
+            if self._paragraph_depth == 1:
+                self._paragraph_parts = []
 
         classes = set(re.findall(r"[a-z0-9_-]+", attributes.get("class", "").lower()))
         element_id = set(
@@ -82,6 +89,13 @@ class _VisibleTextParser(HTMLParser):
 
     def handle_endtag(self, tag):
         tag = tag.lower()
+        if tag == "p" and self._paragraph_depth:
+            if self._paragraph_depth == 1:
+                paragraph = " ".join(self._paragraph_parts).strip()
+                if paragraph:
+                    self._paragraphs.append(paragraph)
+                self._paragraph_parts = []
+            self._paragraph_depth -= 1
         if self._skip_depth:
             self._skip_depth -= 1
         if tag in {"main", "article"} and self._focus_depth:
@@ -98,11 +112,21 @@ class _VisibleTextParser(HTMLParser):
         self._all_text.append(text)
         if self._focus_depth:
             self._focused_text.append(text)
+        if self._paragraph_depth:
+            self._paragraph_parts.append(text)
 
     def body_text(self) -> str:
         focused = " ".join(self._focused_text)
         text = focused if len(focused.split()) >= 40 else " ".join(self._all_text)
         return text[:MAX_BODY_CHARS].strip()
+
+    def rewrite_block(self) -> str:
+        eligible = [
+            paragraph
+            for paragraph in self._paragraphs
+            if 12 <= len(paragraph.split()) <= 160
+        ]
+        return eligible[0] if eligible else ""
 
 
 def fetch_visible_body_copy(url: str) -> dict[str, str | int]:
@@ -142,10 +166,12 @@ def fetch_visible_body_copy(url: str) -> dict[str, str | int]:
     except Exception:  # noqa: BLE001 - retain useful text from malformed HTML
         pass
     body_text = parser.body_text()
+    rewrite_block = parser.rewrite_block()
     return {
         "url": current_url,
         "body_text": body_text,
         "body_word_count": len(body_text.split()),
+        "rewrite_block": rewrite_block,
     }
 
 

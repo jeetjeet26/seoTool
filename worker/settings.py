@@ -19,6 +19,7 @@ class WorkerSettings:
     worker_id: str
     poll_seconds: float
     work_root: Path
+    google_maps_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> "WorkerSettings":
@@ -67,4 +68,5 @@ class WorkerSettings:
             or "seo-audit-worker-1",
             poll_seconds=poll_seconds,
             work_root=work_root,
+            google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", "").strip(),
         )

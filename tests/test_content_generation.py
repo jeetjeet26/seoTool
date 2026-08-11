@@ -115,6 +115,106 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("6 words", user_prompt)
         self.assertEqual(results[0]["current_body_word_count"], 6)
 
+    def test_existing_copy_uses_only_a_light_paragraph_rewrite(self):
+        current = (
+            "Explore thoughtfully designed homes with flexible spaces, useful "
+            "amenities, and convenient access to shops and parks."
+        )
+        proposed = current.replace("useful amenities", "resort-style amenities")
+        response = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "New homes in Walnut - Example",
+                    "meta_description": "D" * 140,
+                    "h1": "Current H1",
+                    "content": proposed,
+                    "content_action": "rewrite_block",
+                    "rationale": "Lightly improves keyword alignment.",
+                }
+            ]
+        )
+        result = ContentGenerator(agent=FakeAgent(responses=[response])).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "h1": "Current H1",
+                    "body_text": f"{current} Additional page copy.",
+                    "rewrite_block": current,
+                    "body_word_count": 18,
+                }
+            ]
+        )[0]
+        self.assertEqual(result["content_action"], "rewrite_block")
+        self.assertEqual(result["current_body_text"], current)
+        self.assertEqual(result["proposed_content"], proposed)
+
+    def test_large_robotic_rewrite_is_dropped(self):
+        current = "This existing paragraph contains concise facts about the community and its available homes."
+        response = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "New homes in Walnut - Example",
+                    "meta_description": "D" * 140,
+                    "h1": "Current H1",
+                    "content": (
+                        "Completely different marketing copy with many extra claims "
+                        "and an expanded description that replaces every original idea."
+                    ),
+                    "content_action": "rewrite_block",
+                    "rationale": "Rewrites the page.",
+                }
+            ]
+        )
+        result = ContentGenerator(agent=FakeAgent(responses=[response])).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "h1": "Current H1",
+                    "body_text": current,
+                    "rewrite_block": current,
+                    "body_word_count": 13,
+                }
+            ]
+        )[0]
+        self.assertEqual(result["content_action"], "none")
+        self.assertEqual(result["proposed_content"], "")
+        self.assertIn("content_change_too_large", result["warnings"])
+
+    def test_missing_copy_is_labeled_as_a_new_short_block(self):
+        proposed = "Discover new homes in Walnut with flexible floor plans and convenient access to local destinations."
+        response = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "New homes in Walnut - Example",
+                    "meta_description": "D" * 140,
+                    "h1": "New Homes in Walnut",
+                    "content": proposed,
+                    "content_action": "new_block",
+                    "rationale": "Adds useful context.",
+                }
+            ]
+        )
+        result = ContentGenerator(agent=FakeAgent(responses=[response])).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "body_word_count": 0,
+                }
+            ]
+        )[0]
+        self.assertEqual(result["content_action"], "new_block")
+        self.assertEqual(result["current_body_text"], "")
+        self.assertIn("New paragraph block", result["rationale"])
+
     def test_existing_mode_requires_title_and_description_rewrites_for_every_page(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)
@@ -132,6 +232,8 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("new proposed title", user_prompt)
         self.assertIn("new proposed meta description for every page", user_prompt)
         self.assertIn("otherwise return the current H1", user_prompt)
+        self.assertIn("change no more than 3-7 words", user_prompt)
+        self.assertIn("content_action", user_prompt)
 
     def test_retries_when_existing_metadata_is_returned_unchanged(self):
         unchanged = json.dumps(

@@ -17,6 +17,7 @@ export interface ContentRecommendation {
   proposed_h1?: string;
   proposed_meta_description?: string;
   proposed_content?: string;
+  content_action?: "rewrite_block" | "new_block" | "none";
   current_body_text?: string;
   rationale?: string;
   current_body_word_count?: number;
@@ -51,6 +52,23 @@ export interface CompetitorMetric {
   common_keywords: number;
   organic_keywords: number;
   organic_traffic: number;
+}
+
+export interface CompetitorCommunity {
+  name: string;
+  builder: string;
+  location: string;
+  url: string;
+  address?: string;
+  place_id?: string;
+  latitude?: number;
+  longitude?: number;
+  distance_miles?: number;
+  rating?: number;
+  review_count?: number;
+  score?: number;
+  source?: "google_places" | "provided";
+  resolution_status?: "verified" | "unverified";
 }
 
 export interface AltTextRecommendation {
@@ -115,6 +133,7 @@ export interface AuditSummary {
     failed?: number;
   };
   competitors?: CompetitorMetric[];
+  competitor_communities?: CompetitorCommunity[];
   backlinks?: Record<string, number>;
   keyword_strategy?: KeywordStrategyItem[];
   keyword_metrics?: Record<string, unknown>;

@@ -19,6 +19,8 @@ services:
         sync: false
       - key: PAGESPEED_API_KEY
         sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
       - key: SCREAMING_FROG_LICENSE_B64
         sync: false
       - key: WORKER_ID

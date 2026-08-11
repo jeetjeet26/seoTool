@@ -129,7 +129,7 @@ export function ShareUnlock({ token }: { token: string }) {
         ? Math.round((portal.completedTasks / portal.totalTasks) * 100)
         : 0;
     return <div className="share-report">
-      <div className="share-heading"><div><p className="eyebrow">Shared audit</p><h1>{portal.clientName}</h1><p>{portal.reportName}</p></div>{portal.score !== null && <span className="score-ring">{portal.score}<small>/100</small></span>}</div>
+      <div className="share-heading"><div><p className="eyebrow">Shared audit</p><h1>{portal.clientName}</h1><p>{portal.reportName}</p></div></div>
       <ClientFindingChecklist
         findings={portal.findings}
         token={token}

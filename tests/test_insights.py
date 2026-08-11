@@ -2,9 +2,11 @@ import csv
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from worker.insights import InsightRunner
+from modules.google_places import GeoLocation
+from worker.insights import InsightRunner, _page_keyword_targets
 from worker.repository import AuditJob
 
 
@@ -97,7 +99,85 @@ class FakePageSpeed:
         }
 
 
+class FakePlaces:
+    enabled = True
+
+    def select_competitors(
+        self,
+        *,
+        property_address,
+        fallback_location,
+        competitor_names,
+        radius_miles=75,
+        limit=10,
+    ):
+        return (
+            GeoLocation(
+                latitude=34.032,
+                longitude=-117.829,
+                formatted_address=property_address,
+                locality="Walnut",
+                region="CA",
+                place_id="subject",
+            ),
+            [
+                {
+                    "name": name.split(" by ", 1)[0],
+                    "builder": name.split(" by ", 1)[1] if " by " in name else "",
+                    "location": "Hacienda Heights, CA",
+                    "address": "1155 Glenelder Ave, Hacienda Heights, CA",
+                    "url": "https://www.lennar.com/sella",
+                    "place_id": f"place-{index}",
+                    "latitude": 33.99,
+                    "longitude": -117.97,
+                    "distance_miles": 9.2,
+                    "score": 82,
+                    "source": "google_places",
+                    "resolution_status": "verified",
+                }
+                for index, name in enumerate(competitor_names[:limit])
+            ],
+        )
+
+
 class InsightRunnerTests(unittest.TestCase):
+    def test_keyword_targets_vary_by_page_and_preserve_approved_assignments(self):
+        pages = [
+            SimpleNamespace(
+                url="https://example.com/",
+                title="New homes in Walnut",
+                h1="The Terraces",
+            ),
+            SimpleNamespace(
+                url="https://example.com/neighborhoods/felice/",
+                title="Felice Townhomes",
+                h1="Felice",
+            ),
+            SimpleNamespace(
+                url="https://example.com/amenities/",
+                title="Community Amenities",
+                h1="Amenities",
+            ),
+        ]
+        keywords = [
+            {
+                "keyword": "felice townhomes walnut",
+                "source": "approved",
+                "assigned_page": pages[1].url,
+                "score": 100,
+            },
+            {"keyword": "new homes walnut", "source": "seed", "score": 80},
+            {"keyword": "homes for sale walnut", "source": "seed", "score": 70},
+            {"keyword": "townhomes for sale walnut", "source": "related", "score": 60},
+            {"keyword": "new construction walnut", "source": "related", "score": 50},
+            {"keyword": "home builders walnut", "source": "related", "score": 40},
+        ]
+
+        targets = _page_keyword_targets(keywords, pages, pages[0].url)
+
+        self.assertEqual(targets[pages[1].url][0], "felice townhomes walnut")
+        self.assertGreater(len({tuple(value) for value in targets.values()}), 1)
+
     def _write_crawl(self, directory: Path, page_count: int) -> None:
         path = directory / "internal_all.csv"
         with path.open("w", newline="", encoding="utf-8") as stream:
@@ -135,6 +215,8 @@ class InsightRunnerTests(unittest.TestCase):
         page_count: int,
         page_limit: int = 1000,
         options: dict | None = None,
+        client_intake: dict | None = None,
+        places=None,
     ) -> dict:
         job = AuditJob(
             id="11111111-1111-4111-8111-111111111111",
@@ -145,11 +227,13 @@ class InsightRunnerTests(unittest.TestCase):
             run_performance=True,
             run_accessibility=True,
             options=options or {},
+            client_intake=client_intake or {},
         )
         runner = InsightRunner(
             semrush=FakeSemrush(),
             pagespeed=FakePageSpeed(),
             generator=FakeGenerator(),
+            places=places,
         )
         with tempfile.TemporaryDirectory() as raw:
             directory = Path(raw)
@@ -220,6 +304,27 @@ class InsightRunnerTests(unittest.TestCase):
         self.assertEqual(competitor["source"], "provided")
         self.assertEqual(competitor["organic_keywords"], 20)
         self.assertEqual(competitor["organic_traffic"], 40)
+        self.assertEqual(len(result["competitors"]), 1)
+
+    def test_google_places_selects_communities_and_records_origin(self):
+        result = self._run(
+            page_count=2,
+            client_intake={
+                "nap": {
+                    "address": "22045 Garibaldi Dr, Walnut, CA 91789",
+                },
+                "competitors": "Sella by Lennar\nBrookfield Walnut",
+            },
+            places=FakePlaces(),
+        )
+        self.assertEqual(
+            [item["name"] for item in result["competitor_communities"]],
+            ["Sella", "Brookfield Walnut"],
+        )
+        self.assertEqual(result["competitors"], [])
+        self.assertEqual(result["property_context"]["locality"], "Walnut")
+        self.assertEqual(result["property_context"]["region"], "CA")
+        self.assertEqual(result["property_context"]["latitude"], 34.032)
 
     def test_audit_community_type_overrides_multifamily_default(self):
         result = self._run(

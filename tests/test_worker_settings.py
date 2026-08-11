@@ -13,6 +13,7 @@ class WorkerSettingsTests(unittest.TestCase):
             "SUPABASE_SERVICE_ROLE_KEY": "test-only-key",
             "SEMRUSH_API_KEY": "test-semrush-key",
             "ANTHROPIC_API_KEY": "test-anthropic-key",
+            "GOOGLE_MAPS_API_KEY": "test-google-key",
             "WORKER_POLL_SECONDS": "7",
             "AUDIT_WORK_ROOT": "/tmp/audits",
         }
@@ -22,6 +23,7 @@ class WorkerSettingsTests(unittest.TestCase):
         self.assertEqual(settings.poll_seconds, 7)
         self.assertEqual(settings.supabase_url, "https://project.supabase.co")
         self.assertEqual(str(settings.work_root), "/tmp/audits")
+        self.assertEqual(settings.google_maps_api_key, "test-google-key")
 
     def test_rejects_missing_credentials(self):
         with patch.dict(os.environ, {}, clear=True):

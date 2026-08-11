@@ -23,6 +23,7 @@ from worker.exports import generate_report_exports
 from worker.insights import InsightRunner
 from worker.repository import AuditJob, WorkerRepository
 from worker.settings import WorkerSettings
+from modules.google_places import GooglePlacesClient
 from worker.tool_repository import ToolRepository
 from worker.tools import ToolRunner
 
@@ -75,7 +76,9 @@ def process_job(
 ) -> None:
     LOGGER.info("Processing audit", extra={"audit_id": job.id, "url": job.target_url})
     service = AuditService(progress_callback=repository.record_progress)
-    insight_runner = insights or InsightRunner()
+    insight_runner = insights or InsightRunner(
+        places=GooglePlacesClient(settings.google_maps_api_key)
+    )
     audit_root = settings.work_root
     job_dir = audit_root / job.id
 

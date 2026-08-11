@@ -20,6 +20,9 @@ must never be committed.
 ## Optional settings
 
 - `PAGESPEED_API_KEY`
+- `GOOGLE_MAPS_API_KEY` enables address geocoding and distance-ranked competitor
+  community selection through Google Places. Restrict the key to the Places
+  and Geocoding APIs and keep it server-side.
 - `WORKER_ID` (default `seo-audit-worker-1`)
 - `WORKER_POLL_SECONDS` (default `5`)
 - `AUDIT_WORK_ROOT` (default `/tmp/seo-audits`)
