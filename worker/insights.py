@@ -538,13 +538,17 @@ def _page_keyword_targets(
         if page_key == homepage_key:
             ordered = [item for _, item in scored]
         else:
-            topical = [item for score, item in scored if score >= 20]
+            exact = [item for score, item in scored if score >= 100]
+            topical = [item for score, item in scored if 20 <= score < 100]
             remaining = [item for score, item in scored if score < 20]
+            seed = int(hashlib.sha256(page.url.encode()).hexdigest()[:8], 16)
+            if topical:
+                offset = seed % len(topical)
+                topical = topical[offset:] + topical[:offset]
             if remaining:
-                offset = int(hashlib.sha256(page.url.encode()).hexdigest()[:8], 16)
-                offset %= len(remaining)
+                offset = seed % len(remaining)
                 remaining = remaining[offset:] + remaining[:offset]
-            ordered = [*topical, *remaining]
+            ordered = [*exact, *topical, *remaining]
 
         for item in ordered:
             keyword = str(item.get("keyword") or "")

@@ -176,7 +176,7 @@ class InsightRunnerTests(unittest.TestCase):
         targets = _page_keyword_targets(keywords, pages, pages[0].url)
 
         self.assertEqual(targets[pages[1].url][0], "felice townhomes walnut")
-        self.assertGreater(len({tuple(value) for value in targets.values()}), 1)
+        self.assertEqual(len({tuple(value) for value in targets.values()}), 3)
 
     def _write_crawl(self, directory: Path, page_count: int) -> None:
         path = directory / "internal_all.csv"

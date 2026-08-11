@@ -377,6 +377,10 @@ def build_keyword_strategy(
         for token in re.findall(r"[a-z0-9]+", value.lower())
         if len(token) > 2
     }
+    # A city can also appear in the property name or domain. It must still be
+    # validated as a location phrase so lookalike markets such as Walnut Creek
+    # cannot pass through the brand-token shortcut.
+    brand_tokens -= location_tokens
     location_suffix_tokens = {
         token
         for value in all_locations

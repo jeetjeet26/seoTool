@@ -32,12 +32,17 @@ class KeywordStrategyTests(unittest.TestCase):
         dual_market = build_keyword_strategy(
             location="Walnut, California",
             target_url="https://example.com/",
+            property_name="The Terraces at Walnut",
             vertical="new_homes",
             secondary_locations=["Los Angeles, California"],
             related=[
                 {
                     "keyword": "new homes walnut creek ca",
                     "volume": 900,
+                },
+                {
+                    "keyword": "new homes walnut creek",
+                    "volume": 800,
                 },
                 {
                     "keyword": "walnut new homes",
@@ -50,6 +55,7 @@ class KeywordStrategyTests(unittest.TestCase):
         self.assertIn("new homes for sale los angeles", keywords)
         self.assertIn("walnut new homes", keywords)
         self.assertNotIn("new homes walnut creek ca", keywords)
+        self.assertNotIn("new homes walnut creek", keywords)
 
     def test_intent_classification(self):
         brand = {"alexan"}
