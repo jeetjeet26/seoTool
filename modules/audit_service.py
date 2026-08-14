@@ -640,6 +640,7 @@ class AuditService:
 
         findings: list[Finding] = []
         pages: list[Dict[str, str]] = []
+        html_rows_seen = 0
         for row in rows:
             address = row.get("address", "")
             if not address:
@@ -647,6 +648,12 @@ class AuditService:
             status = self._number(row.get("status_code"))
             content_type = row.get("content_type", "").lower()
             status_text = row.get("status", "").lower()
+            is_html = not content_type or "html" in content_type
+            if not is_html:
+                continue
+            if page_limit and html_rows_seen >= page_limit:
+                continue
+            html_rows_seen += 1
 
             if 300 <= status < 400:
                 self._append_internal_finding(
@@ -697,16 +704,12 @@ class AuditService:
                     {"indexability_status": indexability_status},
                 )
 
-            is_html = not content_type or "html" in content_type
             is_success = status in {0, 200}
             indexability = row.get("indexability", "").lower()
             if (
-                not is_html
-                or not is_success
+                not is_success
                 or (indexability and indexability != "indexable")
             ):
-                continue
-            if page_limit and len(pages) >= page_limit:
                 continue
             pages.append(row)
 
@@ -719,6 +722,8 @@ class AuditService:
         for issue_type, field in duplicate_fields.items():
             groups: dict[str, list[str]] = {}
             for row in pages:
+                if field not in row:
+                    continue
                 value = row.get(field, "").strip()
                 if value:
                     groups.setdefault(value.casefold(), []).append(
@@ -745,15 +750,31 @@ class AuditService:
             word_count = self._number(row.get("word_count"))
 
             checks = (
-                ("missing_title", not title, {}),
-                ("missing_meta_description", not description, {}),
-                ("missing_h1", not h1, {}),
-                ("missing_canonical", not canonical, {}),
-                ("short_title", bool(title) and title_length < 30, {"length": title_length}),
-                ("long_title", title_length > 60, {"length": title_length}),
+                ("missing_title", "title_1" in row and not title, {}),
+                (
+                    "missing_meta_description",
+                    "meta_description_1" in row and not description,
+                    {},
+                ),
+                ("missing_h1", "h1_1" in row and not h1, {}),
+                (
+                    "missing_canonical",
+                    "canonical_link_element_1" in row and not canonical,
+                    {},
+                ),
+                (
+                    "short_title",
+                    "title_1" in row and bool(title) and title_length < 30,
+                    {"length": title_length},
+                ),
+                (
+                    "long_title",
+                    "title_1" in row and title_length > 60,
+                    {"length": title_length},
+                ),
                 (
                     "long_meta_description",
-                    description_length > 155,
+                    "meta_description_1" in row and description_length > 155,
                     {"length": description_length},
                 ),
                 (
@@ -770,7 +791,7 @@ class AuditService:
                 ),
                 (
                     "low_content",
-                    word_count < 200,
+                    "word_count" in row and word_count < 200,
                     {"word_count": word_count},
                 ),
             )

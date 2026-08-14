@@ -115,7 +115,7 @@ class CrawlImportTests(unittest.TestCase):
                 "https://example.com/",
                 "Dallas",
                 directory,
-                page_limit=2,
+                page_limit=4,
             )
 
         issue_types = [finding.issue_type for finding in result.findings]
