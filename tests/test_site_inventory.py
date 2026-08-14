@@ -138,6 +138,9 @@ class SiteInventoryTests(unittest.TestCase):
                 directory,
                 [
                     page_row("https://example.com/events/list/page/99/"),
+                    page_row(
+                        "https://example.com/amenities/?tribe_event_display=list"
+                    ),
                     page_row("https://example.com/amenities/"),
                     page_row("https://example.com/contact/"),
                 ],

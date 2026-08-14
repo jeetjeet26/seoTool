@@ -12,6 +12,7 @@ import csv
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Sequence
 from urllib.parse import urljoin, urlsplit
 
 import requests
@@ -133,12 +134,13 @@ def build_site_inventory(
     page_limit: int | None = None,
     fetch_sitemap: bool = True,
     sitemap_only: bool = False,
+    sitemap_urls_override: Sequence[str] | None = None,
 ) -> SiteInventory:
     """Assemble the complete page inventory for a crawled site."""
 
     inventory = SiteInventory()
-    sitemap_urls: list[str] = []
-    if fetch_sitemap:
+    sitemap_urls = list(sitemap_urls_override or [])
+    if sitemap_urls_override is None and fetch_sitemap:
         try:
             sitemap_urls = fetch_sitemap_urls(target_url)
         except Exception as exc:  # noqa: BLE001 - sitemap issues must not fail runs
@@ -368,7 +370,8 @@ def _duplicates(pages: list[PageRecord], attribute: str) -> dict[str, list[str]]
 def _normalize(url: str) -> str:
     parts = urlsplit(url.strip())
     path = parts.path.rstrip("/") or "/"
-    return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    base = f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    return f"{base}?{parts.query}" if parts.query else base
 
 
 def _clean(value) -> str:

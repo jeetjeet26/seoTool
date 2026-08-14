@@ -300,6 +300,15 @@ class InsightRunnerTests(unittest.TestCase):
         self.assertEqual(result["site_inventory"]["page_count"], 4)
         self.assertEqual(len(result["content_recommendations"]), 4)
 
+    def test_sitemap_scope_limits_all_page_driven_enrichment(self):
+        result = self._run(
+            page_count=12,
+            options={"sitemap_only": True},
+        )
+        self.assertEqual(result["site_inventory"]["page_count"], 1)
+        self.assertEqual(len(result["content_recommendations"]), 1)
+        self.assertEqual(result["crawl_coverage"]["scope"], "sitemap_only")
+
     def test_keyword_strategy_replaces_hardcoded_phrases(self):
         result = self._run(page_count=2)
         keywords = [entry["keyword"] for entry in result["keyword_strategy"]]

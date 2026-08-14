@@ -145,6 +145,7 @@ class CrawlImportTests(unittest.TestCase):
             (crawl_dir / "h1_missing.csv").write_text(
                 "Address\n"
                 "https://example.com/events/list/page/99/\n"
+                "https://example.com/amenities/?tribe_paged=2\n"
                 "https://example.com/amenities/\n",
                 encoding="utf-8",
             )

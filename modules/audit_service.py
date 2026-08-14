@@ -815,7 +815,8 @@ class AuditService:
     def _url_key(url: str) -> str:
         parts = urlparse(str(url).strip())
         path = parts.path.rstrip("/") or "/"
-        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+        base = f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+        return f"{base}?{parts.query}" if parts.query else base
 
     @staticmethod
     def _urls_for_row(row: Dict[str, str], kind: str):

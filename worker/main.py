@@ -148,7 +148,11 @@ def process_job(
                     message="Market, content, and technical enrichment started",
                 )
             )
-            insight_data = insight_runner.run(job, job_dir / "crawl")
+            insight_data = insight_runner.run(
+                job,
+                job_dir / "crawl",
+                allowed_urls=allowed_urls,
+            )
             if used_local_import:
                 insight_data["crawl_coverage"] = {
                     **(insight_data.get("crawl_coverage") or {}),
@@ -436,7 +440,8 @@ def _scope_findings(findings, allowed_urls):
 def _url_key(url: str) -> str:
     parts = urlsplit(str(url).strip())
     path = parts.path.rstrip("/") or "/"
-    return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    base = f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    return f"{base}?{parts.query}" if parts.query else base
 
 
 def _deduplicate_findings(findings):

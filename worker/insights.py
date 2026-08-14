@@ -49,7 +49,12 @@ class InsightRunner:
         self.generator = generator or ContentGenerator(agent=self.agent)
         self.places = places or GooglePlacesClient()
 
-    def run(self, job: AuditJob, crawl_dir: Path) -> dict:
+    def run(
+        self,
+        job: AuditJob,
+        crawl_dir: Path,
+        allowed_urls: list[str] | None = None,
+    ) -> dict:
         result = {
             "semrush": {},
             "semrush_site_audit": {},
@@ -73,6 +78,7 @@ class InsightRunner:
             job.target_url,
             page_limit=job.page_limit,
             sitemap_only=sitemap_only,
+            sitemap_urls_override=allowed_urls if sitemap_only else None,
         )
         if not inventory.pages:
             fallback = build_http_inventory(
@@ -85,6 +91,7 @@ class InsightRunner:
                 job.target_url,
                 page_limit=job.page_limit,
                 sitemap_only=sitemap_only,
+                sitemap_urls_override=allowed_urls if sitemap_only else None,
             )
             inventory.images_missing_alt = []
             result["crawl_coverage"] = {
@@ -250,6 +257,20 @@ class InsightRunner:
                 for message in self.semrush.consume_diagnostics()
             )
 
+        approved_targets = list(job.approved_keyword_targets)
+        if sitemap_only:
+            page_keys = {_url_key(page.url) for page in pages}
+            rankings = [
+                row
+                for row in rankings
+                if not row.get("landing_page")
+                or _url_key(row["landing_page"]) in page_keys
+            ]
+            approved_targets = [
+                row
+                for row in approved_targets
+                if _url_key(row.get("canonical_url", "")) in page_keys
+            ]
         keywords = build_keyword_strategy(
             location=job.location,
             target_url=job.target_url,
@@ -257,7 +278,7 @@ class InsightRunner:
             rankings=rankings,
             related=related,
             seed_metrics=seed_metrics,
-            approved_targets=list(job.approved_keyword_targets),
+            approved_targets=approved_targets,
             property_terms=_property_terms(vertical, target_markets),
             excluded_terms=excluded_terms,
             competitor_terms=competitor_terms,
@@ -672,6 +693,13 @@ def _content_generation_pages(pages, sitemap_only: bool):
     if not sitemap_only:
         return pages
     return [page for page in pages if not is_event_page(page.url)]
+
+
+def _url_key(url: str) -> str:
+    parts = urlsplit(str(url).strip())
+    path = parts.path.rstrip("/") or "/"
+    base = f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
+    return f"{base}?{parts.query}" if parts.query else base
 
 
 _SEMRUSH_RULE_MAP = {

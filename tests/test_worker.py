@@ -77,7 +77,7 @@ class FakeAuditService:
 
 
 class FakeInsights:
-    def run(self, job, crawl_dir):
+    def run(self, job, crawl_dir, allowed_urls=None):
         return {
             "semrush": {"organic_keywords": 12},
             "keyword_metrics": {},
