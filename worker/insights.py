@@ -22,7 +22,11 @@ from modules.models import Finding, Severity
 from modules.page_content import fetch_body_copy_for_pages
 from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
-from modules.site_inventory import build_site_inventory
+from modules.site_inventory import (
+    build_site_inventory,
+    is_event_page,
+    should_scope_to_sitemap,
+)
 from worker.repository import AuditJob
 
 MAX_GENERATION_PAGES = 200
@@ -63,8 +67,12 @@ class InsightRunner:
             "enrichment_errors": [],
         }
 
+        sitemap_only = should_scope_to_sitemap(job.target_url, job.options)
         inventory = build_site_inventory(
-            crawl_dir, job.target_url, page_limit=job.page_limit
+            crawl_dir,
+            job.target_url,
+            page_limit=job.page_limit,
+            sitemap_only=sitemap_only,
         )
         if not inventory.pages:
             fallback = build_http_inventory(
@@ -76,6 +84,7 @@ class InsightRunner:
                 crawl_dir,
                 job.target_url,
                 page_limit=job.page_limit,
+                sitemap_only=sitemap_only,
             )
             inventory.images_missing_alt = []
             result["crawl_coverage"] = {
@@ -102,6 +111,7 @@ class InsightRunner:
                 ),
                 "screaming_frog": "complete",
                 "pages": len(inventory.pages),
+                "scope": "sitemap_only" if sitemap_only else "full_crawl",
             }
         result["site_inventory"] = inventory.summary()
         pages = inventory.pages
@@ -271,7 +281,8 @@ class InsightRunner:
             job.target_url,
         )
 
-        selected_pages = pages[:MAX_GENERATION_PAGES]
+        content_pages = _content_generation_pages(pages, sitemap_only)
+        selected_pages = content_pages[:MAX_GENERATION_PAGES]
         body_copy, body_copy_errors = fetch_body_copy_for_pages(
             [page.url for page in selected_pages]
         )
@@ -655,6 +666,12 @@ def _limit_content_recommendations(
         else {**item, "proposed_content": "", "current_body_text": ""}
         for item in recommendations
     ]
+
+
+def _content_generation_pages(pages, sitemap_only: bool):
+    if not sitemap_only:
+        return pages
+    return [page for page in pages if not is_event_page(page.url)]
 
 
 _SEMRUSH_RULE_MAP = {

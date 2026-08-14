@@ -22,6 +22,7 @@ SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 MAX_SITEMAP_BYTES = 10 * 1024 * 1024
 MAX_SITEMAP_DOCS = 20
 REQUEST_TIMEOUT = 30
+SITEMAP_ONLY_DOMAINS = {"ariseknoxsquare.com", "www.ariseknoxsquare.com"}
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -131,13 +132,11 @@ def build_site_inventory(
     target_url: str,
     page_limit: int | None = None,
     fetch_sitemap: bool = True,
+    sitemap_only: bool = False,
 ) -> SiteInventory:
     """Assemble the complete page inventory for a crawled site."""
 
     inventory = SiteInventory()
-    pages = load_crawled_pages(Path(crawl_dir) / "internal_all.csv", page_limit)
-    inventory.images_missing_alt = load_images_missing_alt(Path(crawl_dir))
-
     sitemap_urls: list[str] = []
     if fetch_sitemap:
         try:
@@ -145,8 +144,20 @@ def build_site_inventory(
         except Exception as exc:  # noqa: BLE001 - sitemap issues must not fail runs
             inventory.sitemap_errors.append(str(exc)[:300])
     inventory.sitemap_urls = sitemap_urls
-
     sitemap_set = {_normalize(url) for url in sitemap_urls}
+    pages = load_crawled_pages(
+        Path(crawl_dir) / "internal_all.csv",
+        page_limit,
+        allowed_urls=sitemap_set if sitemap_only else None,
+    )
+    inventory.images_missing_alt = load_images_missing_alt(Path(crawl_dir))
+    if sitemap_only:
+        inventory.images_missing_alt = [
+            image
+            for image in inventory.images_missing_alt
+            if image.page_url and _normalize(image.page_url) in sitemap_set
+        ]
+
     crawl_set = {_normalize(page.url) for page in pages}
 
     inventory.pages = [
@@ -164,7 +175,11 @@ def build_site_inventory(
     return inventory
 
 
-def load_crawled_pages(path: Path, page_limit: int | None = None) -> list[PageRecord]:
+def load_crawled_pages(
+    path: Path,
+    page_limit: int | None = None,
+    allowed_urls: set[str] | None = None,
+) -> list[PageRecord]:
     """Load every eligible HTML page row from internal_all.csv."""
 
     if not Path(path).is_file():
@@ -179,6 +194,8 @@ def load_crawled_pages(path: Path, page_limit: int | None = None) -> list[PageRe
             if not url or status not in {"", "200"}:
                 continue
             if content_type and "html" not in content_type:
+                continue
+            if allowed_urls is not None and _normalize(url) not in allowed_urls:
                 continue
             try:
                 url = validate_public_audit_url(url)
@@ -204,6 +221,23 @@ def load_crawled_pages(path: Path, page_limit: int | None = None) -> list[PageRe
             if page_limit and len(pages) >= page_limit:
                 break
     return pages
+
+
+def should_scope_to_sitemap(target_url: str, options: dict | None = None) -> bool:
+    """Return whether this audit should ignore crawl URLs outside its sitemap."""
+
+    if (options or {}).get("sitemap_only") is True:
+        return True
+    return (urlsplit(target_url).hostname or "").lower() in SITEMAP_ONLY_DOMAINS
+
+
+def is_event_page(url: str) -> bool:
+    """Identify calendar landing and event detail pages."""
+
+    path = urlsplit(url).path.lower()
+    return path == "/events/" or path.startswith("/events/") or path.startswith(
+        "/event/"
+    )
 
 
 def load_images_missing_alt(crawl_dir: Path) -> list[ImageRecord]:

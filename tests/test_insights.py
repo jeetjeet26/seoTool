@@ -6,7 +6,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from modules.google_places import GeoLocation
-from worker.insights import InsightRunner, _page_keyword_targets
+from worker.insights import (
+    InsightRunner,
+    _content_generation_pages,
+    _page_keyword_targets,
+)
 from worker.repository import AuditJob
 
 
@@ -141,6 +145,22 @@ class FakePlaces:
 
 
 class InsightRunnerTests(unittest.TestCase):
+    def test_sitemap_scoped_rewrites_exclude_calendar_event_pages(self):
+        pages = [
+            SimpleNamespace(url="https://ariseknoxsquare.com/amenities/"),
+            SimpleNamespace(url="https://ariseknoxsquare.com/events/"),
+            SimpleNamespace(
+                url="https://ariseknoxsquare.com/event/open-house/"
+            ),
+        ]
+
+        selected = _content_generation_pages(pages, sitemap_only=True)
+
+        self.assertEqual(
+            [page.url for page in selected],
+            ["https://ariseknoxsquare.com/amenities/"],
+        )
+
     def test_keyword_targets_vary_by_page_and_preserve_approved_assignments(self):
         pages = [
             SimpleNamespace(

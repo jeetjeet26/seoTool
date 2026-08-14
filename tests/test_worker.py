@@ -52,7 +52,7 @@ class FakeAuditService:
     def __init__(self, progress_callback):
         self.progress_callback = progress_callback
 
-    def run(self, audit_id, url, city, work_dir, finalize=True):
+    def run(self, audit_id, url, city, work_dir, finalize=True, **kwargs):
         crawl_dir = Path(work_dir) / audit_id / "crawl"
         crawl_dir.mkdir(parents=True)
         (crawl_dir / "internal_all.csv").write_text("Address\n" + url)

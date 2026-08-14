@@ -107,6 +107,7 @@ export function AuditForm() {
             </select>
           </label>
           <label>Page limit <span className="label-hint">Maximum 1,000</span><input name="pageLimit" type="number" min="1" max="1000" defaultValue="250" required /></label>
+          <label className="toggle-row"><span><strong>Use sitemap URLs only</strong><small>Ignore archive, pagination, parameter, and automated URLs that are not listed in the XML sitemap.</small></span><input name="sitemapOnly" type="checkbox" /></label>
           <details>
             <summary>Optional PageSpeed and accessibility checks</summary>
             <div className="fields">

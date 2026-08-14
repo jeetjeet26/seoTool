@@ -15,8 +15,10 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from modules.audit_service import AuditService
+from modules.site_inventory import fetch_sitemap_urls, should_scope_to_sitemap
 from modules.models import AuditStage, AuditStatus, ProgressEvent
 from worker.artifacts import ArtifactStore, ToolArtifactStore
 from worker.exports import generate_report_exports
@@ -84,6 +86,14 @@ def process_job(
 
     try:
         with heartbeat(repository, job.id):
+            sitemap_only = should_scope_to_sitemap(job.target_url, job.options)
+            allowed_urls = (
+                fetch_sitemap_urls(job.target_url) if sitemap_only else None
+            )
+            if sitemap_only and not allowed_urls:
+                raise RuntimeError(
+                    "Sitemap-only audit requested, but the sitemap contains no URLs."
+                )
             import_paths = list(job.options.get("crawl_import_paths") or [])
             fallback_paths = list(job.options.get("crawl_fallback_paths") or [])
             used_local_import = bool(import_paths)
@@ -99,6 +109,7 @@ def process_job(
                     city=job.location,
                     work_dir=audit_root,
                     page_limit=job.page_limit,
+                    allowed_urls=allowed_urls,
                 )
             else:
                 result = service.run(
@@ -107,6 +118,8 @@ def process_job(
                     city=job.location,
                     work_dir=audit_root,
                     finalize=False,
+                    page_limit=job.page_limit,
+                    allowed_urls=allowed_urls,
                 )
                 if fallback_paths and not _has_valid_html_export(
                     job_dir / "crawl" / "internal_all.csv"
@@ -123,6 +136,7 @@ def process_job(
                         city=job.location,
                         work_dir=audit_root,
                         page_limit=job.page_limit,
+                        allowed_urls=allowed_urls,
                     )
                     used_local_import = True
             repository.record_progress(
@@ -162,6 +176,9 @@ def process_job(
                 in {"screaming_frog", "screaming_frog_import"}
                 else []
             )
+            if allowed_urls is not None:
+                crawler_findings = _scope_findings(crawler_findings, allowed_urls)
+                semrush_findings = _scope_findings(semrush_findings, allowed_urls)
             combined_findings = _deduplicate_findings(
                 [*crawler_findings, *semrush_findings]
             )
@@ -405,6 +422,21 @@ def _inventory_normalization_gaps(
         for issue_type, count in expected.items()
         if count > 0 and issue_type not in actual_types
     ]
+
+
+def _scope_findings(findings, allowed_urls):
+    allowed = {_url_key(url) for url in allowed_urls}
+    return [
+        finding
+        for finding in findings
+        if _url_key(finding.page_url) in allowed
+    ]
+
+
+def _url_key(url: str) -> str:
+    parts = urlsplit(str(url).strip())
+    path = parts.path.rstrip("/") or "/"
+    return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
 
 
 def _deduplicate_findings(findings):

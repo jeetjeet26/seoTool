@@ -302,6 +302,8 @@ class AuditService:
         work_dir,
         progress_callback: Optional[ProgressCallback] = None,
         finalize: bool = True,
+        page_limit: int | None = None,
+        allowed_urls: Sequence[str] | None = None,
     ) -> AuditResult:
         callback = progress_callback or self.progress_callback
         stage = AuditStage.VALIDATION
@@ -322,7 +324,11 @@ class AuditService:
             self._emit(
                 callback, audit_id, stage, AuditStatus.RUNNING, 70, "Normalizing exports"
             )
-            findings = self.normalize_findings(crawl_dir)
+            findings = self.normalize_findings(
+                crawl_dir,
+                page_limit=page_limit,
+                allowed_urls=allowed_urls,
+            )
             self._emit(
                 callback,
                 audit_id,
@@ -401,6 +407,7 @@ class AuditService:
         work_dir,
         progress_callback: Optional[ProgressCallback] = None,
         page_limit: int | None = None,
+        allowed_urls: Sequence[str] | None = None,
     ) -> AuditResult:
         """Normalize previously uploaded Screaming Frog exports."""
         callback = progress_callback or self.progress_callback
@@ -428,7 +435,11 @@ class AuditService:
             70,
             "Normalizing uploaded exports",
         )
-        findings = self.normalize_findings(crawl_dir, page_limit=page_limit)
+        findings = self.normalize_findings(
+            crawl_dir,
+            page_limit=page_limit,
+            allowed_urls=allowed_urls,
+        )
         self._emit(
             callback,
             audit_id,
@@ -448,6 +459,7 @@ class AuditService:
         self,
         crawl_dir,
         page_limit: int | None = None,
+        allowed_urls: Sequence[str] | None = None,
     ) -> List[Finding]:
         directory = Path(crawl_dir)
         if not directory.is_dir():
@@ -485,8 +497,16 @@ class AuditService:
                     internal_all,
                     covered_issue_types,
                     page_limit,
+                    allowed_urls,
                 )
             )
+        if allowed_urls is not None:
+            allowed = {self._url_key(url) for url in allowed_urls}
+            findings = [
+                finding
+                for finding in findings
+                if self._url_key(finding.page_url) in allowed
+            ]
         return list({finding.id: finding for finding in findings}.values())
 
     def normalize_csvs(self, crawl_dir) -> List[Finding]:
@@ -626,6 +646,7 @@ class AuditService:
         path: Path,
         covered_issue_types: set[str],
         page_limit: int | None,
+        allowed_urls: Sequence[str] | None = None,
     ) -> List[Finding]:
         """Derive core page findings when filtered exports were not uploaded."""
         with path.open("r", encoding="utf-8-sig", newline="") as stream:
@@ -640,6 +661,11 @@ class AuditService:
 
         findings: list[Finding] = []
         pages: list[Dict[str, str]] = []
+        allowed = (
+            {self._url_key(url) for url in allowed_urls}
+            if allowed_urls is not None
+            else None
+        )
         html_rows_seen = 0
         for row in rows:
             address = row.get("address", "")
@@ -650,13 +676,13 @@ class AuditService:
             is_html = not content_type or "html" in content_type
             if not is_html:
                 continue
+            if status not in {0, 200}:
+                continue
+            if allowed is not None and self._url_key(address) not in allowed:
+                continue
             if page_limit and html_rows_seen >= page_limit:
-                continue
+                break
             html_rows_seen += 1
-
-            is_success = status in {0, 200}
-            if not is_success:
-                continue
             pages.append(row)
 
         duplicate_fields = {
@@ -784,6 +810,12 @@ class AuditService:
     @staticmethod
     def _column_key(name: str) -> str:
         return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+    @staticmethod
+    def _url_key(url: str) -> str:
+        parts = urlparse(str(url).strip())
+        path = parts.path.rstrip("/") or "/"
+        return f"{parts.scheme.lower()}://{parts.netloc.lower()}{path}"
 
     @staticmethod
     def _urls_for_row(row: Dict[str, str], kind: str):

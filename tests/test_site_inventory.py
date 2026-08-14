@@ -6,7 +6,9 @@ from unittest.mock import patch
 
 from modules.site_inventory import (
     build_site_inventory,
+    is_event_page,
     load_crawled_pages,
+    should_scope_to_sitemap,
 )
 
 FIELDS = [
@@ -52,6 +54,18 @@ def page_row(url: str, title: str = "Title", description: str = "Description") -
 
 
 class SiteInventoryTests(unittest.TestCase):
+    def test_arise_uses_sitemap_scope_and_identifies_event_pages(self):
+        self.assertTrue(
+            should_scope_to_sitemap("https://ariseknoxsquare.com/", {})
+        )
+        self.assertTrue(is_event_page("https://ariseknoxsquare.com/events/"))
+        self.assertTrue(
+            is_event_page("https://ariseknoxsquare.com/event/open-house/")
+        )
+        self.assertFalse(
+            is_event_page("https://ariseknoxsquare.com/amenities/")
+        )
+
     def test_loads_every_eligible_page_with_limit(self):
         with tempfile.TemporaryDirectory() as raw:
             directory = Path(raw)
@@ -116,6 +130,43 @@ class SiteInventoryTests(unittest.TestCase):
         )
         homepage = next(p for p in inventory.pages if p.url == "https://example.com/")
         self.assertTrue(homepage.in_sitemap)
+
+    def test_sitemap_scope_excludes_automated_crawl_urls_before_page_limit(self):
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            write_internal_csv(
+                directory,
+                [
+                    page_row("https://example.com/events/list/page/99/"),
+                    page_row("https://example.com/amenities/"),
+                    page_row("https://example.com/contact/"),
+                ],
+            )
+            with (
+                patch(
+                    "modules.site_inventory.validate_public_audit_url",
+                    side_effect=lambda value: value,
+                ),
+                patch(
+                    "modules.site_inventory.fetch_sitemap_urls",
+                    return_value=[
+                        "https://example.com/amenities/",
+                        "https://example.com/contact/",
+                    ],
+                ),
+            ):
+                inventory = build_site_inventory(
+                    directory,
+                    "https://example.com/",
+                    page_limit=1,
+                    sitemap_only=True,
+                )
+
+        self.assertEqual(
+            [page.url for page in inventory.pages],
+            ["https://example.com/amenities/"],
+        )
+        self.assertEqual(inventory.crawl_only_urls, [])
 
     def test_flags_duplicates_and_missing_metadata(self):
         with tempfile.TemporaryDirectory() as raw:

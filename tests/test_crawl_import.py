@@ -131,6 +131,31 @@ class CrawlImportTests(unittest.TestCase):
             )
         )
 
+    def test_sitemap_allowlist_filters_internal_and_dedicated_exports(self):
+        audit_id = "11111111-1111-4111-8111-111111111111"
+        with tempfile.TemporaryDirectory() as directory:
+            crawl_dir = Path(directory) / audit_id / "crawl"
+            crawl_dir.mkdir(parents=True)
+            (crawl_dir / "internal_all.csv").write_text(
+                "Address,Status Code,Content Type,H1-1\n"
+                "https://example.com/events/list/page/99/,200,text/html,\n"
+                "https://example.com/amenities/,200,text/html,\n",
+                encoding="utf-8",
+            )
+            (crawl_dir / "h1_missing.csv").write_text(
+                "Address\n"
+                "https://example.com/events/list/page/99/\n"
+                "https://example.com/amenities/\n",
+                encoding="utf-8",
+            )
+            findings = AuditService().normalize_findings(
+                crawl_dir,
+                allowed_urls=["https://example.com/amenities/"],
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].page_url, "https://example.com/amenities/")
+
     def test_filtered_export_prevents_internal_all_double_counting(self):
         audit_id = "11111111-1111-4111-8111-111111111111"
         with tempfile.TemporaryDirectory() as directory:

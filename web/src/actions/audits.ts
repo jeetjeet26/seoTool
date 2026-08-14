@@ -144,6 +144,9 @@ export async function queueAudit(
         competitor_names: competitors.names,
         report_variant: reportVariant,
         crawl_source: crawlSource,
+        sitemap_only:
+          formData.get("sitemapOnly") === "on" ||
+          targetDomain === "ariseknoxsquare.com",
         community_type: communityType,
         secondary_market: secondaryMarket,
       },
