@@ -326,6 +326,28 @@ class InsightRunnerTests(unittest.TestCase):
         self.assertEqual(result["property_context"]["region"], "CA")
         self.assertEqual(result["property_context"]["latitude"], 34.032)
 
+    def test_audit_form_competitor_names_use_google_places(self):
+        result = self._run(
+            page_count=2,
+            options={
+                "competitor_names": [
+                    "Sella by Lennar",
+                    "Brookfield Walnut",
+                ],
+            },
+            client_intake={
+                "nap": {
+                    "address": "22045 Garibaldi Dr, Walnut, CA 91789",
+                },
+            },
+            places=FakePlaces(),
+        )
+        self.assertEqual(
+            [item["name"] for item in result["competitor_communities"]],
+            ["Sella", "Brookfield Walnut"],
+        )
+        self.assertEqual(result["competitors"], [])
+
     def test_audit_community_type_overrides_multifamily_default(self):
         result = self._run(
             page_count=2,

@@ -133,8 +133,16 @@ class InsightRunner:
             else []
         )
         excluded_terms = _list_values(intake.get("avoided_terms"))
-        community_names, intake_competitor_domains = split_competitor_inputs(
+        intake_community_names, intake_competitor_domains = split_competitor_inputs(
             intake.get("competitors")
+        )
+        community_names = list(
+            dict.fromkeys(
+                [
+                    *_list_values(job.options.get("competitor_names")),
+                    *intake_community_names,
+                ]
+            )
         )
         provided_domains = list(
             dict.fromkeys(

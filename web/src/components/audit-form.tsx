@@ -63,13 +63,14 @@ export function AuditForm() {
             <small>{COMMUNITY_TYPE_DESCRIPTIONS[communityType]}</small>
           </label>
           <label>
-            Competitor domains <span className="label-hint">Optional · one per line · maximum 10</span>
+            Competitors <span className="label-hint">Optional · community name or domain · one per line · maximum 10</span>
             <textarea
-              name="competitorDomains"
+              name="competitors"
               rows={4}
               maxLength={2000}
-              placeholder={"competitor-one.com\ncompetitor-two.com"}
+              placeholder={"Sella by Lennar\ncompetitor-two.com"}
             />
+            <small>Community names are verified with Google Places. Domains and full URLs are also accepted.</small>
           </label>
         </div>
       </div>

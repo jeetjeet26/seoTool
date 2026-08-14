@@ -23,8 +23,8 @@ export async function queueAudit(
   const secondaryMarket = String(
     formData.get("secondaryMarket") ?? "",
   ).trim();
-  const rawCompetitorDomains = String(
-    formData.get("competitorDomains") ?? "",
+  const rawCompetitors = String(
+    formData.get("competitors") ?? formData.get("competitorDomains") ?? "",
   ).trim();
   const pageLimit = Number(formData.get("pageLimit"));
   const reportVariant = String(formData.get("reportVariant") ?? "full_client");
@@ -52,15 +52,17 @@ export async function queueAudit(
   } catch {
     return { error: "Enter a valid HTTP or HTTPS website URL." };
   }
-  let competitorDomains: string[];
+  let competitors: ParsedCompetitors;
   try {
-    competitorDomains = parseCompetitorDomains(
-      rawCompetitorDomains,
+    competitors = parseCompetitors(
+      rawCompetitors,
       targetDomain,
     );
-  } catch {
+  } catch (error) {
     return {
-      error: "Enter up to 10 valid competitor domains, one per line.",
+      error: error instanceof CompetitorInputError
+        ? error.message
+        : "Competitor domains could not be validated.",
     };
   }
   if (!Number.isInteger(pageLimit) || pageLimit < 1 || pageLimit > 1000) {
@@ -138,7 +140,8 @@ export async function queueAudit(
       run_performance: formData.get("runPerformance") === "on",
       run_accessibility: formData.get("runAccessibility") === "on",
       options: {
-        competitor_domains: competitorDomains,
+        competitor_domains: competitors.domains,
+        competitor_names: competitors.names,
         report_variant: reportVariant,
         crawl_source: crawlSource,
         community_type: communityType,
@@ -165,24 +168,90 @@ export async function queueAudit(
   redirect(`/audits/${data.id}`);
 }
 
-function parseCompetitorDomains(raw: string, targetDomain: string): string[] {
-  if (!raw) return [];
-  const values = raw
-    .split(/[\n,]+/)
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (values.length > 10) throw new Error("Too many competitors");
+interface ParsedCompetitors {
+  domains: string[];
+  names: string[];
+}
 
-  const domains = values.map((value) => {
-    const parsed = new URL(
-      /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`,
+function parseCompetitors(raw: string, targetDomain: string): ParsedCompetitors {
+  if (!raw) return { domains: [], names: [] };
+  const values = raw
+    .split(/[\r\n;]+/)
+    .map((value) => cleanCompetitorLine(value))
+    .filter(Boolean);
+  if (values.length > 10) {
+    throw new CompetitorInputError(
+      `You entered ${values.length} competitor lines; the maximum is 10.`,
     );
-    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
-    const domain = normalizeDomain(parsed.hostname);
-    if (!domain.includes(".") || domain === targetDomain) throw new Error();
-    return domain;
+  }
+
+  const domains: string[] = [];
+  const names: string[] = [];
+  values.forEach((value, index) => {
+    if (!looksLikeDomain(value)) {
+      if (
+        value.length > 200
+        || !/[a-z\d]/i.test(value)
+        || /[<>]/.test(value)
+      ) {
+        throw new CompetitorInputError(
+          `Competitor line ${index + 1} is not a valid community name or domain.`,
+        );
+      }
+      names.push(value);
+      return;
+    }
+    try {
+      const parsed = new URL(
+        /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`,
+      );
+      if (!["http:", "https:"].includes(parsed.protocol)) throw new Error();
+      const domain = normalizeDomain(parsed.hostname);
+      if (!isValidDomain(domain)) throw new Error();
+      if (domain === targetDomain) {
+        throw new CompetitorInputError(
+          `Competitor line ${index + 1} matches the audited website.`,
+        );
+      }
+      domains.push(domain);
+    } catch (error) {
+      if (error instanceof CompetitorInputError) throw error;
+      throw new CompetitorInputError(
+        `Competitor line ${index + 1} is not a valid domain: "${value}".`,
+      );
+    }
   });
-  return [...new Set(domains)];
+  return {
+    domains: [...new Set(domains)],
+    names: [...new Set(names)],
+  };
+}
+
+class CompetitorInputError extends Error {}
+
+function cleanCompetitorLine(value: string): string {
+  return value
+    .trim()
+    .replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "")
+    .replace(/[,.]+$/, "")
+    .trim();
+}
+
+function looksLikeDomain(value: string): boolean {
+  return /^[a-z][a-z\d+.-]*:\/\//i.test(value)
+    || (!/\s/.test(value) && value.includes("."));
+}
+
+function isValidDomain(value: string): boolean {
+  return value.includes(".")
+    && value.length <= 253
+    && value.split(".").every(
+      (label) => (
+        label.length >= 1
+        && label.length <= 63
+        && /^[a-z\d](?:[a-z\d-]*[a-z\d])?$/i.test(label)
+      ),
+    );
 }
 
 function normalizeDomain(value: string): string {
