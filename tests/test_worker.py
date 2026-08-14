@@ -1,11 +1,16 @@
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from modules.models import AuditResult, AuditStatus, Finding, Severity
-from worker.main import process_job
+from worker.main import (
+    _health_score,
+    _inventory_normalization_gaps,
+    process_job,
+)
 from worker.repository import AuditJob
 
 
@@ -84,6 +89,23 @@ class FakeInsights:
 
 
 class WorkerProcessingTests(unittest.TestCase):
+    def test_health_score_never_rounds_weighted_findings_to_100(self):
+        self.assertEqual(_health_score(Counter({"low": 1}), 1000), 99)
+        self.assertEqual(_health_score(Counter(), 1000), 100)
+
+    def test_inventory_evidence_without_findings_blocks_scoring(self):
+        gaps = _inventory_normalization_gaps(
+            {
+                "missing_description_count": 3,
+                "duplicate_title_count": 2,
+            },
+            [],
+        )
+        self.assertEqual(
+            gaps,
+            ["missing_meta_description", "duplicate_title"],
+        )
+
     def test_process_job_persists_summary_and_cleans_work_dir(self):
         repository = FakeRepository()
         job = AuditJob(

@@ -20,7 +20,7 @@ export default async function AuditPage({ params }: { params: Promise<{ auditId:
   return <>
     <RunAutoRefresh active={audit.status === "queued" || audit.status === "running"}/>
     <div className="breadcrumbs"><Link href="/dashboard">Dashboard</Link><Icon name="chevron"/><span>{audit.id}</span></div>
-    <PageHeader eyebrow={audit.id} title={audit.clientName} description={audit.url} action={<div className="action-row"><Status value={audit.status}/>{audit.score !== null && <Link className="button primary" href={`/audits/${audit.id}/report`}>Open report</Link>}</div>} />
+    <PageHeader eyebrow={audit.id} title={audit.clientName} description={audit.url} action={<div className="action-row"><Status value={audit.status}/>{["review", "published"].includes(audit.status) && <Link className="button primary" href={`/audits/${audit.id}/report`}>Open report</Link>}</div>} />
     {audit.status === "failed" && audit.failedReason && <div className="notice danger"><Icon name="alert"/><span><strong>Audit stopped during processing</strong>{audit.failedReason}</span></div>}
     <section className="card stage-card"><div className="section-title"><div><h2>Audit progress</h2><p>{audit.status === "failed" ? "Action required before processing can continue." : audit.status === "cancelled" ? "This audit was cancelled." : "The latest stage and pipeline activity."}</p></div><span>{Math.min(audit.stage, 5)} of 5</span></div>
       <ol className="stages">{stages.map((stage, index) => <li key={stage} className={index < audit.stage ? "complete" : index === audit.stage ? "current" : ""}><span>{index < audit.stage ? <Icon name="check"/> : index + 1}</span><strong>{stage}</strong></li>)}</ol>

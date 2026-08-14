@@ -647,7 +647,6 @@ class AuditService:
                 continue
             status = self._number(row.get("status_code"))
             content_type = row.get("content_type", "").lower()
-            status_text = row.get("status", "").lower()
             is_html = not content_type or "html" in content_type
             if not is_html:
                 continue
@@ -655,68 +654,14 @@ class AuditService:
                 continue
             html_rows_seen += 1
 
-            if 300 <= status < 400:
-                self._append_internal_finding(
-                    findings,
-                    row,
-                    "redirection_3xx",
-                    covered_issue_types,
-                    {"status_code": status},
-                    resource_url=(
-                        row.get("redirect_url")
-                        or row.get("redirect_uri")
-                        or row.get("destination")
-                        or ""
-                    ),
-                )
-            elif 400 <= status < 500:
-                self._append_internal_finding(
-                    findings,
-                    row,
-                    "client_error_4xx",
-                    covered_issue_types,
-                    {"status_code": status},
-                )
-            elif status >= 500:
-                self._append_internal_finding(
-                    findings,
-                    row,
-                    "server_error_5xx",
-                    covered_issue_types,
-                    {"status_code": status},
-                )
-            elif "no response" in status_text:
-                self._append_internal_finding(
-                    findings,
-                    row,
-                    "no_response",
-                    covered_issue_types,
-                    {"status": row.get("status", "")},
-                )
-
-            indexability_status = row.get("indexability_status", "")
-            if "noindex" in indexability_status.lower():
-                self._append_internal_finding(
-                    findings,
-                    row,
-                    "noindex",
-                    covered_issue_types,
-                    {"indexability_status": indexability_status},
-                )
-
             is_success = status in {0, 200}
-            indexability = row.get("indexability", "").lower()
-            if (
-                not is_success
-                or (indexability and indexability != "indexable")
-            ):
+            if not is_success:
                 continue
             pages.append(row)
 
         duplicate_fields = {
             "duplicate_title": "title_1",
             "duplicate_meta_description": "meta_description_1",
-            "duplicate_h1": "h1_1",
         }
         duplicate_urls: dict[str, set[str]] = {}
         for issue_type, field in duplicate_fields.items():
@@ -741,13 +686,6 @@ class AuditService:
             title = row.get("title_1", "")
             description = row.get("meta_description_1", "")
             h1 = row.get("h1_1", "")
-            canonical = row.get("canonical_link_element_1", "")
-            title_length = self._number(row.get("title_1_length")) or len(title)
-            description_length = (
-                self._number(row.get("meta_description_1_length"))
-                or len(description)
-            )
-            word_count = self._number(row.get("word_count"))
 
             checks = (
                 ("missing_title", "title_1" in row and not title, {}),
@@ -757,43 +695,6 @@ class AuditService:
                     {},
                 ),
                 ("missing_h1", "h1_1" in row and not h1, {}),
-                (
-                    "missing_canonical",
-                    "canonical_link_element_1" in row and not canonical,
-                    {},
-                ),
-                (
-                    "short_title",
-                    "title_1" in row and bool(title) and title_length < 30,
-                    {"length": title_length},
-                ),
-                (
-                    "long_title",
-                    "title_1" in row and title_length > 60,
-                    {"length": title_length},
-                ),
-                (
-                    "long_meta_description",
-                    "meta_description_1" in row and description_length > 155,
-                    {"length": description_length},
-                ),
-                (
-                    "multiple_h1",
-                    bool(row.get("h1_2"))
-                    or self._number(row.get("h1_count")) > 1,
-                    {},
-                ),
-                (
-                    "multiple_canonicals",
-                    bool(row.get("canonical_link_element_2"))
-                    or self._number(row.get("canonical_link_element_count")) > 1,
-                    {},
-                ),
-                (
-                    "low_content",
-                    "word_count" in row and word_count < 200,
-                    {"word_count": word_count},
-                ),
             )
             for issue_type, applies, details in checks:
                 if applies:

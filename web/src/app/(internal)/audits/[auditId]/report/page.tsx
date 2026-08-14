@@ -43,6 +43,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
       (run.auditId === auditId || run.clientId === audit.clientId),
   );
   const summary = audit.summary ?? {};
+  const normalizationIncomplete = summary.normalization_status === "incomplete";
   const categoryCards = buildCategoryCards(summary);
   const history = audits
     .filter((item) => item.clientId === audit.clientId && item.score !== null)
@@ -54,7 +55,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     <div className="breadcrumbs"><Link href={`/audits/${auditId}`}>Audit {auditId}</Link><Icon name="chevron"/><span>Report</span></div>
     <PageHeader eyebrow="Technical SEO report" title={summary.property_context?.name || audit.clientName} description={`${summary.property_context?.location ? `${summary.property_context.location} · ` : ""}Prepared ${preparedDate} · ${audit.pages} pages analyzed`} action={<ReportActions auditId={auditId}/>}/>
     <section className="report-hero">
-      <div className="score-panel"><span className="score-ring large-score">{audit.score ?? "—"}<small>/100</small></span><div><p>Overall health</p><strong>{healthLabel(audit.score)}</strong><small>{audit.score === null ? "Available after analysis" : `${findings.length} recorded finding${findings.length === 1 ? "" : "s"}`}</small></div></div>
+      <div className="score-panel"><span className="score-ring large-score">{audit.score ?? "—"}<small>/100</small></span><div><p>Overall health</p><strong>{healthLabel(audit.score, normalizationIncomplete)}</strong><small>{normalizationIncomplete ? "Finding normalization requires review" : audit.score === null ? "Available after analysis" : `${findings.length} recorded finding${findings.length === 1 ? "" : "s"}`}</small></div></div>
       <div><h2>Executive summary</h2><p>{executiveSummary(summary, findings.length)}</p></div>
     </section>
     <section className="category-grid" aria-label="SEO category scores">
@@ -76,11 +77,14 @@ function buildCategoryCards(summary: AuditSummary) {
   const counts = summary.category_counts ?? {};
   const entries = Object.entries(counts);
   if (!entries.length) {
+    const note = summary.normalization_status === "incomplete"
+      ? "Normalization incomplete"
+      : "Awaiting crawl";
     return [
-      { label: "Crawlability", value: 0, note: "Awaiting crawl" },
-      { label: "Metadata", value: 0, note: "Awaiting crawl" },
-      { label: "Content", value: 0, note: "Awaiting crawl" },
-      { label: "Links", value: 0, note: "Awaiting crawl" },
+      { label: "Crawlability", value: 0, note },
+      { label: "Metadata", value: 0, note },
+      { label: "Content", value: 0, note },
+      { label: "Links", value: 0, note },
       { label: "Performance", value: 0, note: "Awaiting analysis" },
       { label: "Accessibility", value: 0, note: "Awaiting analysis" },
     ];
@@ -93,6 +97,9 @@ function buildCategoryCards(summary: AuditSummary) {
 }
 
 function executiveSummary(summary: AuditSummary, findingCount: number) {
+  if (summary.normalization_status === "incomplete") {
+    return "Crawl evidence was collected, but some evidence could not be converted into findings. Health scoring is withheld until normalization is complete.";
+  }
   const critical = summary.severity_counts?.critical ?? 0;
   const high = summary.severity_counts?.high ?? 0;
   if (!findingCount) {
@@ -101,7 +108,8 @@ function executiveSummary(summary: AuditSummary, findingCount: number) {
   return `The audit identified ${findingCount} issue occurrences, including ${critical} critical and ${high} high-severity items. Review the prioritized findings below, confirm AI-assisted recommendations, and publish only approved remediation tasks to the client portal.`;
 }
 
-function healthLabel(score: number | null) {
+function healthLabel(score: number | null, normalizationIncomplete = false) {
+  if (normalizationIncomplete) return "Health unavailable";
   if (score === null) return "Awaiting analysis";
   if (score >= 90) return "Healthy";
   if (score >= 70) return "Needs attention";

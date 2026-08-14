@@ -90,7 +90,7 @@ class CrawlImportTests(unittest.TestCase):
         self.assertEqual(len(missing_h1), 1)
         self.assertEqual(missing_h1[0].source_file, "h1_missing.csv")
 
-    def test_internal_all_derives_findings_when_filtered_exports_are_absent(self):
+    def test_internal_all_derives_baseline_findings_without_filtered_exports(self):
         audit_id = "11111111-1111-4111-8111-111111111111"
         with tempfile.TemporaryDirectory() as directory:
             crawl_dir = Path(directory) / audit_id / "crawl"
@@ -122,10 +122,8 @@ class CrawlImportTests(unittest.TestCase):
         self.assertIn("missing_meta_description", issue_types)
         self.assertIn("missing_h1", issue_types)
         self.assertIn("duplicate_title", issue_types)
-        self.assertIn("missing_canonical", issue_types)
-        self.assertIn("low_content", issue_types)
-        self.assertIn("noindex", issue_types)
-        self.assertIn("client_error_4xx", issue_types)
+        self.assertNotIn("client_error_4xx", issue_types)
+        self.assertNotIn("missing_canonical", issue_types)
         self.assertTrue(
             all(
                 finding.source_file == "internal_all.csv"

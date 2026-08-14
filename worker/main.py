@@ -165,6 +165,24 @@ def process_job(
             combined_findings = _deduplicate_findings(
                 [*crawler_findings, *semrush_findings]
             )
+            normalization_gaps = _inventory_normalization_gaps(
+                insight_data.get("site_inventory") or {},
+                combined_findings,
+            )
+            insight_data["normalization_status"] = (
+                "incomplete" if normalization_gaps else "complete"
+            )
+            if normalization_gaps:
+                insight_data["enrichment_errors"].append(
+                    {
+                        "service": "finding_normalization",
+                        "message": (
+                            "Crawl evidence could not be converted into findings for: "
+                            + ", ".join(normalization_gaps)
+                            + ". Health scoring is unavailable for this run."
+                        ),
+                    }
+                )
             repository.record_progress(
                 ProgressEvent(
                     audit_id=job.id,
@@ -200,7 +218,11 @@ def process_job(
                 (insight_data.get("semrush_site_audit") or {}).get("scoped_pages")
                 or 0
             )
-            score = _health_score(severity_counts, pages_scanned)
+            score = (
+                None
+                if normalization_gaps
+                else _health_score(severity_counts, pages_scanned)
+            )
             summary = {
                 "finding_count": finding_count,
                 "pages_scanned": pages_scanned,
@@ -358,7 +380,31 @@ def _health_score(severity_counts: Counter, pages_scanned: int) -> int:
         for severity, count in severity_counts.items()
     )
     scale = max(1, pages_scanned / 10)
-    return max(0, min(100, round(100 - penalty / scale)))
+    score = max(0, min(100, round(100 - penalty / scale)))
+    return min(99, score) if penalty > 0 else score
+
+
+def _inventory_normalization_gaps(
+    inventory: dict,
+    findings,
+) -> list[str]:
+    expected = {
+        "missing_title": int(inventory.get("missing_title_count") or 0),
+        "missing_meta_description": int(
+            inventory.get("missing_description_count") or 0
+        ),
+        "missing_h1": int(inventory.get("missing_h1_count") or 0),
+        "duplicate_title": int(inventory.get("duplicate_title_count") or 0),
+        "duplicate_meta_description": int(
+            inventory.get("duplicate_description_count") or 0
+        ),
+    }
+    actual_types = {finding.issue_type for finding in findings}
+    return [
+        issue_type
+        for issue_type, count in expected.items()
+        if count > 0 and issue_type not in actual_types
+    ]
 
 
 def _deduplicate_findings(findings):

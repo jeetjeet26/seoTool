@@ -96,6 +96,7 @@ export interface SiteInventorySummary {
 
 export interface AuditSummary {
   score?: number;
+  normalization_status?: "complete" | "incomplete";
   pages_scanned?: number;
   finding_count?: number;
   severity_counts?: Record<string, number>;
