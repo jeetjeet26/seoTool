@@ -400,6 +400,7 @@ class AuditService:
         city: str,
         work_dir,
         progress_callback: Optional[ProgressCallback] = None,
+        page_limit: int | None = None,
     ) -> AuditResult:
         """Normalize previously uploaded Screaming Frog exports."""
         callback = progress_callback or self.progress_callback
@@ -427,7 +428,7 @@ class AuditService:
             70,
             "Normalizing uploaded exports",
         )
-        findings = self.normalize_findings(crawl_dir)
+        findings = self.normalize_findings(crawl_dir, page_limit=page_limit)
         self._emit(
             callback,
             audit_id,
@@ -443,21 +444,28 @@ class AuditService:
             findings=findings,
         )
 
-    def normalize_findings(self, crawl_dir) -> List[Finding]:
+    def normalize_findings(
+        self,
+        crawl_dir,
+        page_limit: int | None = None,
+    ) -> List[Finding]:
         directory = Path(crawl_dir)
         if not directory.is_dir():
             raise AuditInputError(f"crawl directory does not exist: {directory}")
 
         files = self._index_csv_files(directory)
         findings: List[Finding] = []
+        covered_issue_types: set[str] = set()
         for export in self._EXPORTS:
             path = self._find_export(files, export["names"])
             if path:
                 findings.extend(self._normalize_file(path, export))
+                covered_issue_types.add(export["issue_type"])
 
         for stem, (issue_type, recommendation) in self._SECURITY_EXPORTS.items():
             path = files.get(self._filename_key(stem))
             if path:
+                covered_issue_types.add(issue_type)
                 findings.extend(
                     self._normalize_file(
                         path,
@@ -470,7 +478,16 @@ class AuditService:
                         },
                     )
                 )
-        return findings
+        internal_all = files.get(self._filename_key("internal_all"))
+        if internal_all:
+            findings.extend(
+                self._normalize_internal_all(
+                    internal_all,
+                    covered_issue_types,
+                    page_limit,
+                )
+            )
+        return list({finding.id: finding for finding in findings}.values())
 
     def normalize_csvs(self, crawl_dir) -> List[Finding]:
         """Compatibility alias for callers that describe exports as CSVs."""
@@ -603,6 +620,244 @@ class AuditService:
                     )
                 )
         return findings
+
+    def _normalize_internal_all(
+        self,
+        path: Path,
+        covered_issue_types: set[str],
+        page_limit: int | None,
+    ) -> List[Finding]:
+        """Derive core page findings when filtered exports were not uploaded."""
+        with path.open("r", encoding="utf-8-sig", newline="") as stream:
+            rows = [
+                {
+                    self._column_key(key): (value or "").strip()
+                    for key, value in raw_row.items()
+                    if key is not None
+                }
+                for raw_row in csv.DictReader(stream)
+            ]
+
+        findings: list[Finding] = []
+        pages: list[Dict[str, str]] = []
+        for row in rows:
+            address = row.get("address", "")
+            if not address:
+                continue
+            status = self._number(row.get("status_code"))
+            content_type = row.get("content_type", "").lower()
+            status_text = row.get("status", "").lower()
+
+            if 300 <= status < 400:
+                self._append_internal_finding(
+                    findings,
+                    row,
+                    "redirection_3xx",
+                    covered_issue_types,
+                    {"status_code": status},
+                    resource_url=(
+                        row.get("redirect_url")
+                        or row.get("redirect_uri")
+                        or row.get("destination")
+                        or ""
+                    ),
+                )
+            elif 400 <= status < 500:
+                self._append_internal_finding(
+                    findings,
+                    row,
+                    "client_error_4xx",
+                    covered_issue_types,
+                    {"status_code": status},
+                )
+            elif status >= 500:
+                self._append_internal_finding(
+                    findings,
+                    row,
+                    "server_error_5xx",
+                    covered_issue_types,
+                    {"status_code": status},
+                )
+            elif "no response" in status_text:
+                self._append_internal_finding(
+                    findings,
+                    row,
+                    "no_response",
+                    covered_issue_types,
+                    {"status": row.get("status", "")},
+                )
+
+            indexability_status = row.get("indexability_status", "")
+            if "noindex" in indexability_status.lower():
+                self._append_internal_finding(
+                    findings,
+                    row,
+                    "noindex",
+                    covered_issue_types,
+                    {"indexability_status": indexability_status},
+                )
+
+            is_html = not content_type or "html" in content_type
+            is_success = status in {0, 200}
+            indexability = row.get("indexability", "").lower()
+            if (
+                not is_html
+                or not is_success
+                or (indexability and indexability != "indexable")
+            ):
+                continue
+            if page_limit and len(pages) >= page_limit:
+                continue
+            pages.append(row)
+
+        duplicate_fields = {
+            "duplicate_title": "title_1",
+            "duplicate_meta_description": "meta_description_1",
+            "duplicate_h1": "h1_1",
+        }
+        duplicate_urls: dict[str, set[str]] = {}
+        for issue_type, field in duplicate_fields.items():
+            groups: dict[str, list[str]] = {}
+            for row in pages:
+                value = row.get(field, "").strip()
+                if value:
+                    groups.setdefault(value.casefold(), []).append(
+                        row.get("address", "")
+                    )
+            duplicate_urls[issue_type] = {
+                url
+                for urls in groups.values()
+                if len(urls) > 1
+                for url in urls
+            }
+
+        for row in pages:
+            address = row.get("address", "")
+            title = row.get("title_1", "")
+            description = row.get("meta_description_1", "")
+            h1 = row.get("h1_1", "")
+            canonical = row.get("canonical_link_element_1", "")
+            title_length = self._number(row.get("title_1_length")) or len(title)
+            description_length = (
+                self._number(row.get("meta_description_1_length"))
+                or len(description)
+            )
+            word_count = self._number(row.get("word_count"))
+
+            checks = (
+                ("missing_title", not title, {}),
+                ("missing_meta_description", not description, {}),
+                ("missing_h1", not h1, {}),
+                ("missing_canonical", not canonical, {}),
+                ("short_title", bool(title) and title_length < 30, {"length": title_length}),
+                ("long_title", title_length > 60, {"length": title_length}),
+                (
+                    "long_meta_description",
+                    description_length > 155,
+                    {"length": description_length},
+                ),
+                (
+                    "multiple_h1",
+                    bool(row.get("h1_2"))
+                    or self._number(row.get("h1_count")) > 1,
+                    {},
+                ),
+                (
+                    "multiple_canonicals",
+                    bool(row.get("canonical_link_element_2"))
+                    or self._number(row.get("canonical_link_element_count")) > 1,
+                    {},
+                ),
+                (
+                    "low_content",
+                    word_count < 200,
+                    {"word_count": word_count},
+                ),
+            )
+            for issue_type, applies, details in checks:
+                if applies:
+                    self._append_internal_finding(
+                        findings,
+                        row,
+                        issue_type,
+                        covered_issue_types,
+                        details,
+                    )
+            for issue_type, urls in duplicate_urls.items():
+                if address in urls:
+                    field = duplicate_fields[issue_type]
+                    self._append_internal_finding(
+                        findings,
+                        row,
+                        issue_type,
+                        covered_issue_types,
+                        {field: row.get(field, "")},
+                    )
+        return findings
+
+    def _append_internal_finding(
+        self,
+        findings: list[Finding],
+        row: Dict[str, str],
+        issue_type: str,
+        covered_issue_types: set[str],
+        details: dict,
+        resource_url: str = "",
+    ) -> None:
+        if issue_type in covered_issue_types:
+            return
+        export = next(
+            (
+                item
+                for item in self._EXPORTS
+                if item["issue_type"] == issue_type
+            ),
+            None,
+        )
+        if export is None:
+            return
+        page_url = row.get("address", "")
+        evidence = json.dumps(
+            {"issue": issue_type, **details},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        findings.append(
+            Finding(
+                id=self._stable_id(
+                    export["category"],
+                    issue_type,
+                    page_url,
+                    resource_url,
+                    evidence,
+                ),
+                category=export["category"],
+                severity=export["severity"],
+                issue_type=issue_type,
+                page_url=page_url,
+                resource_url=resource_url,
+                evidence=evidence,
+                recommendation=export["recommendation"],
+                source_file="internal_all.csv",
+                metadata={
+                    "derived_from": "internal_all.csv",
+                    "crawler_row": {
+                        "address": page_url,
+                        **{
+                            key: str(value)
+                            for key, value in details.items()
+                        },
+                    },
+                },
+            )
+        )
+
+    @staticmethod
+    def _number(value: str | None) -> int:
+        try:
+            return int(float(value or 0))
+        except (TypeError, ValueError):
+            return 0
 
     @staticmethod
     def _column_key(name: str) -> str:

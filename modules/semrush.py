@@ -279,7 +279,8 @@ class SemrushClient:
             return {}
         project_id = str(project["project_id"])
         info = self._project_json(
-            f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/info"
+            f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/info",
+            ignore_not_found=True,
         )
         snapshot = info.get("current_snapshot") or {}
         snapshot_id = snapshot.get("snapshot_id")
@@ -385,13 +386,19 @@ class SemrushClient:
         ]
         return matches[0] if matches else {}
 
-    def _project_json(self, url: str) -> dict | list:
+    def _project_json(
+        self,
+        url: str,
+        ignore_not_found: bool = False,
+    ) -> dict | list:
         try:
             response = requests.get(
                 url,
                 params={"key": self.api_key},
                 timeout=60,
             )
+            if ignore_not_found and response.status_code == 404:
+                return {}
             response.raise_for_status()
             return response.json()
         except (requests.exceptions.RequestException, ValueError) as exc:

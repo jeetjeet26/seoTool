@@ -82,8 +82,78 @@ class CrawlImportTests(unittest.TestCase):
                 "Dallas",
                 directory,
             )
-        self.assertEqual(len(result.findings), 1)
-        self.assertEqual(result.findings[0].issue_type, "missing_h1")
+        missing_h1 = [
+            finding
+            for finding in result.findings
+            if finding.issue_type == "missing_h1"
+        ]
+        self.assertEqual(len(missing_h1), 1)
+        self.assertEqual(missing_h1[0].source_file, "h1_missing.csv")
+
+    def test_internal_all_derives_findings_when_filtered_exports_are_absent(self):
+        audit_id = "11111111-1111-4111-8111-111111111111"
+        with tempfile.TemporaryDirectory() as directory:
+            crawl_dir = Path(directory) / audit_id / "crawl"
+            crawl_dir.mkdir(parents=True)
+            (crawl_dir / "internal_all.csv").write_text(
+                "Address,Status Code,Status,Content Type,Indexability,"
+                "Indexability Status,Title 1,Title 1 Length,"
+                "Meta Description 1,Meta Description 1 Length,H1-1,H1-2,"
+                "Canonical Link Element 1,Word Count\n"
+                "https://example.com/a,200,OK,text/html,Indexable,,"
+                "Repeated title,14,,,Heading,,,80\n"
+                "https://example.com/b,200,OK,text/html,Indexable,,"
+                "Repeated title,14,Description,11,,,https://example.com/b,300\n"
+                "https://example.com/private,200,OK,text/html,Non-Indexable,"
+                "noindex,Private,7,Private page,12,Private,,,100\n"
+                "https://example.com/missing,404,Not Found,text/html,"
+                "Non-Indexable,Client Error,,,,,,,,0\n",
+                encoding="utf-8",
+            )
+            result = AuditService().run_from_exports(
+                audit_id,
+                "https://example.com/",
+                "Dallas",
+                directory,
+                page_limit=2,
+            )
+
+        issue_types = [finding.issue_type for finding in result.findings]
+        self.assertIn("missing_meta_description", issue_types)
+        self.assertIn("missing_h1", issue_types)
+        self.assertIn("duplicate_title", issue_types)
+        self.assertIn("missing_canonical", issue_types)
+        self.assertIn("low_content", issue_types)
+        self.assertIn("noindex", issue_types)
+        self.assertIn("client_error_4xx", issue_types)
+        self.assertTrue(
+            all(
+                finding.source_file == "internal_all.csv"
+                for finding in result.findings
+            )
+        )
+
+    def test_filtered_export_prevents_internal_all_double_counting(self):
+        audit_id = "11111111-1111-4111-8111-111111111111"
+        with tempfile.TemporaryDirectory() as directory:
+            crawl_dir = Path(directory) / audit_id / "crawl"
+            crawl_dir.mkdir(parents=True)
+            (crawl_dir / "internal_all.csv").write_text(
+                "Address,Status Code,Content Type,Indexability,H1-1\n"
+                "https://example.com/,200,text/html,Indexable,\n",
+                encoding="utf-8",
+            )
+            (crawl_dir / "h1_missing.csv").write_text(
+                "Address\nhttps://example.com/\n",
+                encoding="utf-8",
+            )
+            findings = AuditService().normalize_findings(crawl_dir)
+
+        missing_h1 = [
+            finding for finding in findings if finding.issue_type == "missing_h1"
+        ]
+        self.assertEqual(len(missing_h1), 1)
+        self.assertEqual(missing_h1[0].source_file, "h1_missing.csv")
 
 
 if __name__ == "__main__":

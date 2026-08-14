@@ -5,9 +5,10 @@ from modules.semrush import SemrushClient
 
 
 class FakeResponse:
-    def __init__(self, text: str = "", payload=None):
+    def __init__(self, text: str = "", payload=None, status_code: int = 200):
         self.text = text
         self.payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
         return None
@@ -91,6 +92,20 @@ class SemrushReportTests(unittest.TestCase):
         diagnostic = client.consume_diagnostics()[0]
         self.assertNotIn("test-key", diagnostic)
         self.assertIn("[REDACTED]", diagnostic)
+
+    def test_expected_missing_site_audit_does_not_emit_raw_404(self):
+        client = make_client()
+        client.diagnostics = []
+        with patch(
+            "modules.semrush.requests.get",
+            return_value=FakeResponse(status_code=404),
+        ):
+            result = client._project_json(
+                "https://api.semrush.com/reports/v1/projects/1/siteaudit/info",
+                ignore_not_found=True,
+            )
+        self.assertEqual(result, {})
+        self.assertEqual(client.consume_diagnostics(), [])
 
     def test_parses_competitors(self):
         body = (

@@ -98,6 +98,7 @@ def process_job(
                     url=job.target_url,
                     city=job.location,
                     work_dir=audit_root,
+                    page_limit=job.page_limit,
                 )
             else:
                 result = service.run(
@@ -121,6 +122,7 @@ def process_job(
                         url=job.target_url,
                         city=job.location,
                         work_dir=audit_root,
+                        page_limit=job.page_limit,
                     )
                     used_local_import = True
             repository.record_progress(
