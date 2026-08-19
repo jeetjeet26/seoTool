@@ -136,6 +136,42 @@ class _VisibleTextParser(HTMLParser):
         return eligible[0] if eligible else ""
 
 
+def extract_visible_copy_from_html(html: str, url: str = "") -> dict[str, str | int]:
+    """Parse cleaned visible body text from already-fetched HTML."""
+    parser = _VisibleTextParser()
+    try:
+        parser.feed(html)
+    except Exception:  # noqa: BLE001 - retain useful text from malformed HTML
+        pass
+    body_text = parser.body_text()
+    rewrite_block = parser.rewrite_block()
+    return {
+        "url": url,
+        "body_text": body_text,
+        "body_word_count": len(body_text.split()),
+        "rewrite_block": rewrite_block,
+    }
+
+
+def stored_copy_for_url(
+    stored_copy: dict[str, dict[str, str | int]] | None,
+    url: str,
+) -> dict[str, str | int] | None:
+    """Return stored visible copy for a URL, ignoring trailing-slash differences."""
+    if not stored_copy or not url:
+        return None
+    candidates = [url]
+    if url.endswith("/"):
+        candidates.append(url.rstrip("/"))
+    else:
+        candidates.append(f"{url}/")
+    for candidate in candidates:
+        item = stored_copy.get(candidate)
+        if item and item.get("body_text"):
+            return {**item, "url": url}
+    return None
+
+
 def fetch_visible_body_copy(url: str) -> dict[str, str | int]:
     """Fetch one public HTML page and return cleaned visible body text."""
     last_error: Exception | None = None
@@ -180,38 +216,42 @@ def _fetch_visible_body_copy_once(url: str) -> dict[str, str | int]:
 
     content = response.raw.read(MAX_BYTES, decode_content=True)
     encoding = response.encoding or "utf-8"
-    parser = _VisibleTextParser()
-    try:
-        parser.feed(content.decode(encoding, errors="replace"))
-    except Exception:  # noqa: BLE001 - retain useful text from malformed HTML
-        pass
-    body_text = parser.body_text()
-    rewrite_block = parser.rewrite_block()
-    return {
-        "url": current_url,
-        "body_text": body_text,
-        "body_word_count": len(body_text.split()),
-        "rewrite_block": rewrite_block,
-    }
+    extracted = extract_visible_copy_from_html(
+        content.decode(encoding, errors="replace"),
+        current_url,
+    )
+    if not extracted.get("body_text"):
+        raise RuntimeError(f"No visible body copy in {url}")
+    return extracted
 
 
 def fetch_body_copy_for_pages(
     urls: list[str],
     workers: int = 6,
+    stored_copy: dict[str, dict[str, str | int]] | None = None,
 ) -> tuple[dict[str, dict[str, str | int]], list[str]]:
     """Fetch visible copy concurrently while isolating per-page failures."""
     results: dict[str, dict[str, str | int]] = {}
     errors: list[str] = []
+    unique_urls = list(dict.fromkeys(urls))
     with ThreadPoolExecutor(max_workers=max(1, min(workers, 10))) as executor:
         futures = {
             executor.submit(fetch_visible_body_copy, url): url
-            for url in dict.fromkeys(urls)
+            for url in unique_urls
         }
         for future in as_completed(futures):
             url = futures[future]
             try:
-                results[url] = future.result()
+                extracted = future.result()
+                if extracted.get("body_text"):
+                    results[url] = extracted
+                    continue
+                raise RuntimeError("empty body")
             except Exception as exc:  # noqa: BLE001
+                stored = stored_copy_for_url(stored_copy, url)
+                if stored:
+                    results[url] = stored
+                    continue
                 detail = exc.__class__.__name__
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 if status:

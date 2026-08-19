@@ -346,8 +346,12 @@ class InsightRunner:
 
         content_pages = _content_generation_pages(pages, sitemap_only)
         selected_pages = content_pages[:MAX_GENERATION_PAGES]
+        stored_page_copy = job.options.get("page_copy")
+        if not isinstance(stored_page_copy, dict):
+            stored_page_copy = {}
         body_copy, body_copy_errors = fetch_body_copy_for_pages(
-            [page.url for page in selected_pages]
+            [page.url for page in selected_pages],
+            stored_copy=stored_page_copy,
         )
         result["body_copy_coverage"] = {
             "attempted": len(selected_pages),

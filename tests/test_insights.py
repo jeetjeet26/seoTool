@@ -293,7 +293,7 @@ class InsightRunnerTests(unittest.TestCase):
                 ),
                 patch(
                     "worker.insights.fetch_body_copy_for_pages",
-                    side_effect=lambda urls: (
+                    side_effect=lambda urls, stored_copy=None: (
                         {
                             url: {
                                 "url": url,

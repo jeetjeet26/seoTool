@@ -50,6 +50,28 @@ class PageContentTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("https://b.example/", errors[0])
 
+    def test_stored_copy_fills_in_when_live_fetch_fails(self):
+        with patch(
+            "modules.page_content.fetch_visible_body_copy",
+            side_effect=RuntimeError("blocked"),
+        ):
+            results, errors = fetch_body_copy_for_pages(
+                ["https://a.example/amenities/"],
+                workers=1,
+                stored_copy={
+                    "https://a.example/amenities": {
+                        "body_text": "Stored amenities copy for residents.",
+                        "body_word_count": 5,
+                        "rewrite_block": "Stored amenities copy for residents.",
+                    }
+                },
+            )
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            results["https://a.example/amenities/"]["body_text"],
+            "Stored amenities copy for residents.",
+        )
+
     def test_visible_copy_fetch_retries_transient_failures(self):
         with (
             patch("modules.page_content.time.sleep"),
