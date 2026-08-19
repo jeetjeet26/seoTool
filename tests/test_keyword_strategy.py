@@ -247,6 +247,22 @@ class KeywordStrategyTests(unittest.TestCase):
             )
         )
 
+    def test_excluded_phrase_overrides_an_old_approved_target(self):
+        results = build_keyword_strategy(
+            location="Hoover",
+            target_url="https://ariseknoxsquare.com/",
+            approved_targets=[
+                {
+                    "keyword": "arise denver apartments",
+                    "canonical_url": "https://ariseknoxsquare.com/",
+                    "role": "primary",
+                }
+            ],
+            excluded_terms=["arise denver apartments"],
+            vertical="senior_living",
+        )
+        self.assertFalse(any("denver" in item["keyword"] for item in results))
+
 
 if __name__ == "__main__":
     unittest.main()

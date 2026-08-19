@@ -82,6 +82,8 @@ export interface AltTextRecommendation {
 
 export interface SiteInventorySummary {
   page_count?: number;
+  total_crawled_page_count?: number;
+  event_page_count?: number;
   sitemap_url_count?: number;
   sitemap_only_count?: number;
   crawl_only_count?: number;
@@ -131,10 +133,22 @@ export interface AuditSummary {
     screaming_frog?: "complete" | "blocked";
     attempted?: number;
     pages?: number;
+    total_pages?: number;
+    event_pages?: number;
     failed?: number;
   };
   competitors?: CompetitorMetric[];
   competitor_communities?: CompetitorCommunity[];
+  nearby_neighborhoods?: string[];
+  event_page_treatment?: "full_audit" | "technical_only";
+  event_backlog?: {
+    treatment?: "full_audit" | "technical_only";
+    page_count?: number;
+    finding_count?: number;
+    issue_counts?: Record<string, number>;
+    severity_counts?: Record<string, number>;
+    sample_urls?: string[];
+  };
   backlinks?: Record<string, number>;
   keyword_strategy?: KeywordStrategyItem[];
   keyword_metrics?: Record<string, unknown>;

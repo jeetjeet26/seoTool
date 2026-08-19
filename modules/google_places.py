@@ -17,6 +17,8 @@ PLACE_FIELDS = ",".join(
     [
         "places.id",
         "places.displayName",
+        "places.primaryType",
+        "places.types",
         "places.formattedAddress",
         "places.addressComponents",
         "places.location",
@@ -27,6 +29,14 @@ PLACE_FIELDS = ",".join(
     ]
 )
 EARTH_RADIUS_MILES = 3958.8
+DISALLOWED_COMPETITOR_TYPES = {
+    "bar",
+    "brewery",
+    "hotel",
+    "lodging",
+    "motel",
+    "restaurant",
+}
 
 
 class GooglePlacesError(RuntimeError):
@@ -177,7 +187,33 @@ class GooglePlacesClient:
             existing = deduplicated.get(key)
             if existing is None or _rank_key(item) < _rank_key(existing):
                 deduplicated[key] = item
-        selected = sorted(deduplicated.values(), key=_rank_key)[:limit]
+        verified_by_input = {
+            int(item.get("_input_index") or 0): item
+            for item in sorted(deduplicated.values(), key=_rank_key)
+        }
+        selected: list[dict[str, Any]] = []
+        for input_index, raw_name in enumerate(competitor_names):
+            item = verified_by_input.get(input_index)
+            if item is None:
+                name, builder = _split_name_builder(raw_name)
+                item = {
+                    "name": name,
+                    "builder": builder,
+                    "location": ", ".join(
+                        value for value in (origin.locality, origin.region) if value
+                    ),
+                    "address": "",
+                    "url": "",
+                    "place_id": "",
+                    "score": 0,
+                    "source": "provided",
+                    "resolution_status": "unverified",
+                    "_input_index": input_index,
+                }
+            item["priority"] = input_index + 1
+            selected.append(item)
+            if len(selected) >= limit:
+                break
         for item in selected:
             item.pop("_input_index", None)
         return origin, selected
@@ -223,6 +259,16 @@ def _score_place(
 ) -> dict[str, Any] | None:
     status = str(place.get("businessStatus") or "OPERATIONAL")
     if status == "CLOSED_PERMANENTLY":
+        return None
+    place_types = {
+        str(value).lower()
+        for value in [
+            *(place.get("types") or []),
+            place.get("primaryType") or "",
+        ]
+        if value
+    }
+    if place_types & DISALLOWED_COMPETITOR_TYPES:
         return None
     display_name = place.get("displayName") or {}
     name = str(

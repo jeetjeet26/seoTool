@@ -108,22 +108,35 @@ class SiteInventory:
     def pages_missing_h1(self) -> list[str]:
         return [page.url for page in self.pages if not page.h1]
 
-    def summary(self) -> dict:
+    def summary(self, pages: list[PageRecord] | None = None) -> dict:
+        selected_pages = self.pages if pages is None else pages
+        selected_urls = {_normalize(page.url) for page in selected_pages}
+        duplicate_titles = _duplicates(selected_pages, "title")
+        duplicate_descriptions = _duplicates(selected_pages, "meta_description")
         return {
-            "page_count": len(self.pages),
+            "page_count": len(selected_pages),
             "sitemap_url_count": len(self.sitemap_urls),
             "sitemap_only_count": len(self.sitemap_only_urls),
             "crawl_only_count": len(self.crawl_only_urls),
-            "missing_title_count": len(self.pages_missing_title),
-            "missing_description_count": len(self.pages_missing_description),
-            "missing_h1_count": len(self.pages_missing_h1),
+            "missing_title_count": sum(not page.title for page in selected_pages),
+            "missing_description_count": sum(
+                not page.meta_description for page in selected_pages
+            ),
+            "missing_h1_count": sum(not page.h1 for page in selected_pages),
             "duplicate_title_count": sum(
-                len(urls) for urls in self.duplicate_titles.values()
+                len(urls) for urls in duplicate_titles.values()
             ),
             "duplicate_description_count": sum(
-                len(urls) for urls in self.duplicate_descriptions.values()
+                len(urls) for urls in duplicate_descriptions.values()
             ),
-            "images_missing_alt_count": len(self.images_missing_alt),
+            "images_missing_alt_count": sum(
+                pages is None
+                or bool(
+                    image.page_url
+                    and _normalize(image.page_url) in selected_urls
+                )
+                for image in self.images_missing_alt
+            ),
             "sitemap_errors": self.sitemap_errors,
         }
 
@@ -240,6 +253,13 @@ def is_event_page(url: str) -> bool:
     return path == "/events/" or path.startswith("/events/") or path.startswith(
         "/event/"
     )
+
+
+def events_are_technical_only(target_url: str, options: dict | None = None) -> bool:
+    treatment = str((options or {}).get("event_page_treatment") or "").strip()
+    if treatment:
+        return treatment == "technical_only"
+    return (urlsplit(target_url).hostname or "").lower() in SITEMAP_ONLY_DOMAINS
 
 
 def load_images_missing_alt(crawl_dir: Path) -> list[ImageRecord]:

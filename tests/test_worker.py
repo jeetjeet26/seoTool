@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from modules.models import AuditResult, AuditStatus, Finding, Severity
 from worker.main import (
+    _event_backlog_summary,
     _health_score,
     _inventory_normalization_gaps,
     process_job,
@@ -89,6 +90,26 @@ class FakeInsights:
 
 
 class WorkerProcessingTests(unittest.TestCase):
+    def test_event_backlog_is_counted_separately(self):
+        finding = Finding(
+            id="b" * 64,
+            category="metadata",
+            severity=Severity.MEDIUM,
+            issue_type="missing_meta_description",
+            page_url="https://example.com/event/open-house/",
+            resource_url="",
+            evidence="{}",
+            recommendation="Add a description.",
+            source_file="internal_all.csv",
+        )
+        backlog = _event_backlog_summary([finding], page_count=58)
+        self.assertEqual(backlog["page_count"], 58)
+        self.assertEqual(backlog["finding_count"], 1)
+        self.assertEqual(
+            backlog["issue_counts"],
+            {"missing_meta_description": 1},
+        )
+
     def test_health_score_never_rounds_weighted_findings_to_100(self):
         self.assertEqual(_health_score(Counter({"low": 1}), 1000), 99)
         self.assertEqual(_health_score(Counter(), 1000), 100)

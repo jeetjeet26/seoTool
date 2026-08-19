@@ -61,6 +61,7 @@ export function AuditInsights({
     <PropertyContext summary={summary} />
     <CrawlCoverage summary={summary} />
     <SiteInventory summary={summary} />
+    <EventBacklog summary={summary} />
     <SemrushSiteAudit summary={summary} />
     <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={targets} />
     <SearchVisibility summary={summary} />
@@ -115,6 +116,7 @@ function CrawlCoverage({ summary }: { summary: AuditSummary }) {
       <article><span>Screaming Frog</span><strong>{fallback ? "Blocked" : imported ? "Local import" : "Complete"}</strong></article>
       <article><span>Page analysis</span><strong>{fallback ? "Browser fallback" : imported ? "Uploaded exports" : "Screaming Frog"}</strong></article>
       <article><span>Pages analyzed</span><strong>{formatNumber(coverage.pages)}</strong></article>
+      {!!coverage.event_pages && <article><span>Event pages separated</span><strong>{formatNumber(coverage.event_pages)}</strong></article>}
       <article><span>Semrush issues</span><strong>{summary.semrush_site_audit?.project_id ? "Included" : "Unavailable"}</strong></article>
     </div>
   </section>;
@@ -169,7 +171,8 @@ function ServiceStatus({
 function SiteInventory({ summary }: { summary: AuditSummary }) {
   const inventory = summary.site_inventory ?? {};
   const metrics = [
-    ["Crawled HTML pages", inventory.page_count],
+    ["Core HTML pages", inventory.page_count],
+    ["All crawled HTML pages", inventory.total_crawled_page_count],
     ["Sitemap URLs", inventory.sitemap_url_count],
     ["Sitemap-only URLs", inventory.sitemap_only_count],
     ["Crawl-only URLs", inventory.crawl_only_count],
@@ -186,10 +189,26 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
   </section>;
 }
 
+function EventBacklog({ summary }: { summary: AuditSummary }) {
+  const backlog = summary.event_backlog;
+  if (backlog?.treatment !== "technical_only" || !backlog.page_count) return null;
+  const issues = Object.entries(backlog.issue_counts ?? {});
+  return <section className="card report-section">
+    <div className="section-title"><div><h2>Event page technical backlog</h2><p>Event and past-event pages were checked separately. They do not affect the health score, keyword targets, or copy recommendations.</p></div></div>
+    <div className="insight-metrics">
+      <article><span>Event pages</span><strong>{formatNumber(backlog.page_count)}</strong></article>
+      <article><span>Technical occurrences</span><strong>{formatNumber(backlog.finding_count)}</strong></article>
+      {Object.entries(backlog.severity_counts ?? {}).map(([severity, count]) => <article key={severity}><span>{humanize(severity)}</span><strong>{formatNumber(count)}</strong></article>)}
+    </div>
+    {issues.length > 0 && <div className="table-wrap"><table><thead><tr><th>Event-page issue</th><th>Occurrences</th></tr></thead><tbody>{issues.map(([issue, count]) => <tr key={issue}><td>{humanize(issue)}</td><td>{formatNumber(count)}</td></tr>)}</tbody></table></div>}
+  </section>;
+}
+
 function SearchVisibility({ summary }: { summary: AuditSummary }) {
   const semrush = summary.semrush ?? {};
   const communities = summary.competitor_communities ?? [];
   const competitors = summary.competitors ?? [];
+  const neighborhoods = summary.nearby_neighborhoods ?? [];
   const backlinks = summary.backlinks ?? {};
   return <section className="card report-section">
     <div className="section-title"><div><h2>Search visibility</h2><p>Semrush organic visibility, backlink authority, and competitors.</p></div></div>
@@ -200,11 +219,15 @@ function SearchVisibility({ summary }: { summary: AuditSummary }) {
     <div className="subsection">
       <h3>{communities.length ? "Selected competitor communities" : "Compare domains"}</h3>
       {communities.length
-        ? <div className="table-wrap"><table><thead><tr><th>Community</th><th>Builder</th><th>Location</th><th>Distance</th><th>Verification</th><th>Website</th></tr></thead><tbody>{communities.map((item) => <tr key={item.place_id || `${item.name}-${item.location}`}><td><strong>{item.name}</strong></td><td>{item.builder || "—"}</td><td>{item.location}</td><td>{item.distance_miles === undefined ? "—" : `${formatNumber(item.distance_miles)} mi`}</td><td>{item.resolution_status === "verified" ? "Google verified" : "Provided"}</td><td className="url-cell"><ReportLink url={item.url}/></td></tr>)}</tbody></table></div>
+        ? <div className="table-wrap"><table><thead><tr><th>Community</th><th>Builder</th><th>Location</th><th>Distance</th><th>Verification</th><th>Website</th></tr></thead><tbody>{communities.map((item) => <tr key={item.place_id || `${item.name}-${item.location}`}><td><strong>{item.name}</strong></td><td>{item.builder || "—"}</td><td>{item.location}</td><td>{item.distance_miles === undefined ? "—" : `${formatNumber(item.distance_miles)} mi`}</td><td>{item.resolution_status === "verified" ? "Google verified" : "Provided"}</td><td className="url-cell">{item.url ? <ReportLink url={item.url}/> : "—"}</td></tr>)}</tbody></table></div>
         : competitors.length
           ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Source</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.source === "provided" ? "Provided" : "Semrush"}</td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
           : <EmptyState text="No competitor communities or domains were provided for this audit."/>}
     </div>
+    {neighborhoods.length > 0 && <div className="subsection">
+      <h3>Nearby neighborhoods and market areas</h3>
+      <p>{neighborhoods.join(" · ")}</p>
+    </div>}
   </section>;
 }
 

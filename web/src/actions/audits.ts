@@ -33,6 +33,29 @@ export async function queueAudit(
   const communityType = String(
     formData.get("communityType") ?? "multifamily",
   );
+  const eventPageTreatment = String(
+    formData.get("eventPageTreatment") ?? "full_audit",
+  );
+  let nearbyNeighborhoods: string[];
+  let excludedKeywords: string[];
+  try {
+    nearbyNeighborhoods = parseSimpleLines(
+      String(formData.get("nearbyNeighborhoods") ?? ""),
+      25,
+      "nearby neighborhood",
+    );
+    excludedKeywords = parseSimpleLines(
+      String(formData.get("excludedKeywords") ?? ""),
+      25,
+      "excluded keyword",
+    );
+  } catch (error) {
+    return {
+      error: error instanceof CompetitorInputError
+        ? error.message
+        : "The targeting inputs could not be validated.",
+    };
+  }
 
   if (!clientName || !targetUrl || !targetCity) {
     return { error: "Client name, website URL, and city are required." };
@@ -73,6 +96,9 @@ export async function queueAudit(
   }
   if (!["cloud", "local", "cloud_fallback"].includes(crawlSource)) {
     return { error: "Choose a valid crawl source." };
+  }
+  if (!["full_audit", "technical_only"].includes(eventPageTreatment)) {
+    return { error: "Choose a valid event-page treatment." };
   }
   if (
     ![
@@ -149,6 +175,12 @@ export async function queueAudit(
           targetDomain === "ariseknoxsquare.com",
         community_type: communityType,
         secondary_market: secondaryMarket,
+        nearby_neighborhoods: nearbyNeighborhoods,
+        excluded_keywords: excludedKeywords,
+        event_page_treatment:
+          targetDomain === "ariseknoxsquare.com"
+            ? "technical_only"
+            : eventPageTreatment,
       },
       status: awaitingUpload ? "draft" : "queued",
       current_stage: awaitingUpload ? "awaiting_upload" : "queued",
@@ -228,6 +260,31 @@ function parseCompetitors(raw: string, targetDomain: string): ParsedCompetitors 
     domains: [...new Set(domains)],
     names: [...new Set(names)],
   };
+}
+
+function parseSimpleLines(
+  raw: string,
+  maximum: number,
+  label: string,
+): string[] {
+  const values = raw
+    .split(/[\r\n;]+/)
+    .map((value) => cleanCompetitorLine(value))
+    .filter(Boolean);
+  if (values.length > maximum) {
+    throw new CompetitorInputError(
+      `You entered ${values.length} ${label} lines; the maximum is ${maximum}.`,
+    );
+  }
+  const invalidIndex = values.findIndex(
+    (value) => value.length > 200 || !/[a-z\d]/i.test(value) || /[<>]/.test(value),
+  );
+  if (invalidIndex >= 0) {
+    throw new CompetitorInputError(
+      `${label[0].toUpperCase()}${label.slice(1)} line ${invalidIndex + 1} is invalid.`,
+    );
+  }
+  return [...new Set(values)];
 }
 
 class CompetitorInputError extends Error {}

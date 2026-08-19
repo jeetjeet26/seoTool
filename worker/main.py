@@ -18,7 +18,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from modules.audit_service import AuditService
-from modules.site_inventory import fetch_sitemap_urls, should_scope_to_sitemap
+from modules.site_inventory import (
+    events_are_technical_only,
+    fetch_sitemap_urls,
+    is_event_page,
+    should_scope_to_sitemap,
+)
 from modules.models import AuditStage, AuditStatus, ProgressEvent
 from worker.artifacts import ArtifactStore, ToolArtifactStore
 from worker.exports import generate_report_exports
@@ -186,6 +191,26 @@ def process_job(
             combined_findings = _deduplicate_findings(
                 [*crawler_findings, *semrush_findings]
             )
+            if events_are_technical_only(job.target_url, job.options):
+                event_findings = [
+                    finding
+                    for finding in combined_findings
+                    if is_event_page(finding.page_url)
+                ]
+                combined_findings = [
+                    finding
+                    for finding in combined_findings
+                    if not is_event_page(finding.page_url)
+                ]
+                insight_data["event_backlog"] = _event_backlog_summary(
+                    event_findings,
+                    int(
+                        (insight_data.get("event_backlog") or {}).get(
+                            "page_count"
+                        )
+                        or 0
+                    ),
+                )
             normalization_gaps = _inventory_normalization_gaps(
                 insight_data.get("site_inventory") or {},
                 combined_findings,
@@ -426,6 +451,20 @@ def _inventory_normalization_gaps(
         for issue_type, count in expected.items()
         if count > 0 and issue_type not in actual_types
     ]
+
+
+def _event_backlog_summary(findings, page_count: int) -> dict:
+    issue_counts = Counter(finding.issue_type for finding in findings)
+    severity_counts = Counter(finding.severity.value for finding in findings)
+    affected_urls = sorted({finding.page_url for finding in findings})
+    return {
+        "treatment": "technical_only",
+        "page_count": page_count,
+        "finding_count": len(findings),
+        "issue_counts": dict(issue_counts.most_common()),
+        "severity_counts": dict(severity_counts),
+        "sample_urls": affected_urls[:5],
+    }
 
 
 def _scope_findings(findings, allowed_urls):

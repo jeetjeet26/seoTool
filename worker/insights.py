@@ -24,6 +24,7 @@ from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
 from modules.site_inventory import (
     build_site_inventory,
+    events_are_technical_only,
     is_event_page,
     should_scope_to_sitemap,
 )
@@ -60,6 +61,8 @@ class InsightRunner:
             "semrush_site_audit": {},
             "competitors": [],
             "competitor_communities": [],
+            "nearby_neighborhoods": [],
+            "event_backlog": {},
             "backlinks": {},
             "keyword_metrics": {},
             "keyword_strategy": [],
@@ -120,8 +123,37 @@ class InsightRunner:
                 "pages": len(inventory.pages),
                 "scope": "sitemap_only" if sitemap_only else "full_crawl",
             }
-        result["site_inventory"] = inventory.summary()
-        pages = inventory.pages
+        event_technical_only = events_are_technical_only(
+            job.target_url,
+            job.options,
+        )
+        event_pages = [
+            page for page in inventory.pages if is_event_page(page.url)
+        ]
+        pages = (
+            [page for page in inventory.pages if not is_event_page(page.url)]
+            if event_technical_only
+            else inventory.pages
+        )
+        result["event_page_treatment"] = (
+            "technical_only" if event_technical_only else "full_audit"
+        )
+        result["event_backlog"] = {
+            "treatment": result["event_page_treatment"],
+            "page_count": len(event_pages),
+            "finding_count": 0,
+            "issue_counts": {},
+            "severity_counts": {},
+        }
+        result["site_inventory"] = inventory.summary(pages)
+        result["site_inventory"]["total_crawled_page_count"] = len(inventory.pages)
+        result["site_inventory"]["event_page_count"] = len(event_pages)
+        result["crawl_coverage"] = {
+            **(result.get("crawl_coverage") or {}),
+            "pages": len(pages),
+            "total_pages": len(inventory.pages),
+            "event_pages": len(event_pages),
+        }
         intake = job.client_intake
         property_name = (
             str(intake.get("property_name") or "").strip()
@@ -149,7 +181,17 @@ class InsightRunner:
             if secondary_market
             else []
         )
-        excluded_terms = _list_values(intake.get("avoided_terms"))
+        excluded_terms = list(
+            dict.fromkeys(
+                [
+                    *_list_values(job.options.get("excluded_keywords")),
+                    *_list_values(intake.get("avoided_terms")),
+                ]
+            )
+        )
+        result["nearby_neighborhoods"] = _list_values(
+            job.options.get("nearby_neighborhoods")
+        )
         intake_community_names, intake_competitor_domains = split_competitor_inputs(
             intake.get("competitors")
         )
@@ -357,7 +399,7 @@ class InsightRunner:
                             "vertical": vertical,
                             "differentiators": intake.get("differentiators", ""),
                             "amenities": intake.get("amenities", ""),
-                            "avoided_terms": intake.get("avoided_terms", ""),
+                            "avoided_terms": "; ".join(excluded_terms),
                             "title_style_guide": intake.get("title_style_guide", ""),
                             "fair_housing_enabled": bool(
                                 intake.get("fair_housing_enabled", False)
@@ -369,7 +411,10 @@ class InsightRunner:
                     )
                 ]
                 result["content_recommendations"] = _limit_content_recommendations(
-                    generated_recommendations,
+                    _guard_excluded_recommendations(
+                        generated_recommendations,
+                        excluded_terms,
+                    ),
                     job.options.get("report_variant", "full_client"),
                 )
             except Exception as exc:  # noqa: BLE001
@@ -693,6 +738,56 @@ def _content_generation_pages(pages, sitemap_only: bool):
     if not sitemap_only:
         return pages
     return [page for page in pages if not is_event_page(page.url)]
+
+
+def _guard_excluded_recommendations(
+    recommendations: list[dict],
+    excluded_terms: list[str],
+) -> list[dict]:
+    blocked = [
+        " ".join(term.lower().split())
+        for term in excluded_terms
+        if str(term).strip()
+    ]
+    if not blocked:
+        return recommendations
+    guarded: list[dict] = []
+    for item in recommendations:
+        proposed = " ".join(
+            str(item.get(key) or "")
+            for key in (
+                "proposed_title",
+                "proposed_meta_description",
+                "proposed_h1",
+                "proposed_content",
+            )
+        ).lower()
+        matches = [term for term in blocked if term in proposed]
+        if not matches:
+            guarded.append(item)
+            continue
+        guarded.append(
+            {
+                **item,
+                "proposed_title": item.get("current_title", ""),
+                "proposed_meta_description": item.get(
+                    "current_meta_description",
+                    "",
+                ),
+                "proposed_h1": item.get("current_h1", ""),
+                "proposed_content": "",
+                "content_action": "none",
+                "rationale": (
+                    "Recommendation withheld because it contained an excluded "
+                    "brand or market term."
+                ),
+                "warnings": [
+                    *(item.get("warnings") or []),
+                    "Excluded term blocked: " + ", ".join(matches),
+                ],
+            }
+        )
+    return guarded
 
 
 def _url_key(url: str) -> str:

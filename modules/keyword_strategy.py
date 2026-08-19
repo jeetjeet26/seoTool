@@ -421,7 +421,11 @@ def build_keyword_strategy(
 
     for row in approved_targets or []:
         keyword = (row.get("keyword") or "").strip().lower()
-        if not keyword:
+        if (
+            not keyword
+            or any(phrase and phrase in keyword for phrase in excluded_phrases)
+            or any(phrase and phrase in keyword for phrase in competitor_phrases)
+        ):
             continue
         metrics = row.get("metrics") or {}
         merged[keyword] = KeywordCandidate(

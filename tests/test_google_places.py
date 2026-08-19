@@ -65,6 +65,7 @@ def place(
     region="CA",
     website=True,
     status="OPERATIONAL",
+    types=None,
 ):
     return {
         "id": place_id,
@@ -83,6 +84,7 @@ def place(
         "websiteUri": f"https://{place_id}.example.com" if website else "",
         "rating": 4.5,
         "userRatingCount": 25,
+        "types": types or [],
     }
 
 
@@ -188,7 +190,8 @@ class GooglePlacesClientTests(unittest.TestCase):
             fallback_location="Walnut, CA",
             competitor_names=["Sella"],
         )
-        self.assertEqual(competitors, [])
+        self.assertEqual(competitors[0]["name"], "Sella")
+        self.assertEqual(competitors[0]["resolution_status"], "unverified")
 
     def test_location_name_alone_cannot_match_competitor_brand(self):
         session = FakeSession(
@@ -210,7 +213,33 @@ class GooglePlacesClientTests(unittest.TestCase):
             fallback_location="Walnut, CA",
             competitor_names=["Brookfield Walnut"],
         )
-        self.assertEqual(competitors, [])
+        self.assertEqual(competitors[0]["name"], "Brookfield Walnut")
+        self.assertEqual(competitors[0]["resolution_status"], "unverified")
+
+    def test_hotel_match_is_not_verified_as_a_competitor_community(self):
+        session = FakeSession(
+            {
+                "Homewood Suites, Walnut, CA": [
+                    place(
+                        "hotel",
+                        "Homewood Suites",
+                        34.04,
+                        -117.82,
+                        "Walnut",
+                        types=["hotel", "lodging"],
+                    )
+                ]
+            }
+        )
+        client = GooglePlacesClient("test-key", session=session)
+        _, competitors = client.select_competitors(
+            property_address="22045 Garibaldi Dr, Walnut, CA 91789",
+            fallback_location="Walnut, CA",
+            competitor_names=["Homewood Suites"],
+        )
+        self.assertEqual(competitors[0]["name"], "Homewood Suites")
+        self.assertEqual(competitors[0]["resolution_status"], "unverified")
+        self.assertEqual(competitors[0]["url"], "")
 
     def test_supplied_builder_must_match_name_or_website(self):
         wrong = place(

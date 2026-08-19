@@ -9,6 +9,7 @@ from modules.google_places import GeoLocation
 from worker.insights import (
     InsightRunner,
     _content_generation_pages,
+    _guard_excluded_recommendations,
     _page_keyword_targets,
 )
 from worker.repository import AuditJob
@@ -145,6 +146,29 @@ class FakePlaces:
 
 
 class InsightRunnerTests(unittest.TestCase):
+    def test_excluded_brand_is_blocked_from_generated_copy(self):
+        guarded = _guard_excluded_recommendations(
+            [
+                {
+                    "current_title": "Amenities | Arise Knox Square",
+                    "current_meta_description": "",
+                    "current_h1": "Amenities",
+                    "proposed_title": "Arise Denver Apartments Amenities",
+                    "proposed_meta_description": "Explore Hoover senior living.",
+                    "proposed_h1": "Amenities",
+                    "proposed_content": "Current content.",
+                    "warnings": [],
+                }
+            ],
+            ["Arise Denver Apartments"],
+        )
+        self.assertEqual(
+            guarded[0]["proposed_title"],
+            "Amenities | Arise Knox Square",
+        )
+        self.assertEqual(guarded[0]["proposed_content"], "")
+        self.assertIn("Excluded term blocked", guarded[0]["warnings"][0])
+
     def test_sitemap_scoped_rewrites_exclude_calendar_event_pages(self):
         pages = [
             SimpleNamespace(url="https://ariseknoxsquare.com/amenities/"),

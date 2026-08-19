@@ -72,6 +72,26 @@ export function AuditForm() {
             />
             <small>Community names are verified with Google Places. Domains and full URLs are also accepted.</small>
           </label>
+          <label>
+            Nearby neighborhoods <span className="label-hint">Optional · one per line</span>
+            <textarea
+              name="nearbyNeighborhoods"
+              rows={4}
+              maxLength={3000}
+              placeholder={"Riverchase\nBluff Park\nTrace Crossings"}
+            />
+            <small>These are displayed as approved market areas, not resolved as businesses or street addresses.</small>
+          </label>
+          <label>
+            Excluded keyword or brand phrases <span className="label-hint">Optional · one per line</span>
+            <textarea
+              name="excludedKeywords"
+              rows={3}
+              maxLength={3000}
+              placeholder={"unrelated brand apartments\nwrong city apartments"}
+            />
+            <small>Matching terms are removed from keyword targets and blocked from generated copy.</small>
+          </label>
         </div>
       </div>
       <div className="form-section">
@@ -108,6 +128,13 @@ export function AuditForm() {
           </label>
           <label>Page limit <span className="label-hint">Maximum 1,000</span><input name="pageLimit" type="number" min="1" max="1000" defaultValue="250" required /></label>
           <label className="toggle-row"><span><strong>Use sitemap URLs only</strong><small>Ignore archive, pagination, parameter, and automated URLs that are not listed in the XML sitemap.</small></span><input name="sitemapOnly" type="checkbox" /></label>
+          <label>
+            Event and past-event pages
+            <select name="eventPageTreatment" defaultValue="full_audit">
+              <option value="full_audit">Include in scoring and copy recommendations</option>
+              <option value="technical_only">Audit separately; exclude from score and copy</option>
+            </select>
+          </label>
           <details>
             <summary>Optional PageSpeed and accessibility checks</summary>
             <div className="fields">
