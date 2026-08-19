@@ -368,22 +368,26 @@ def _name_similarity(requested: str, resolved: str) -> float:
     return max(overlap, sequence, contains)
 
 
-def _has_distinctive_match(requested: str, resolved: str, locality: str) -> bool:
-    locality_tokens = set(_normalize(locality).split())
+def _has_distinctive_match(requested: str, resolved: str, _locality: str) -> bool:
     generic_tokens = {
         "at",
+        "apartment",
+        "apartments",
         "by",
         "community",
         "homes",
+        "independent",
+        "living",
         "new",
         "residential",
+        "senior",
         "the",
     }
     requested_tokens = (
-        set(_normalize(requested).split()) - locality_tokens - generic_tokens
+        set(_normalize(requested).split()) - generic_tokens
     )
     resolved_tokens = set(_normalize(resolved).split())
-    return not requested_tokens or bool(requested_tokens & resolved_tokens)
+    return bool(requested_tokens) and requested_tokens <= resolved_tokens
 
 
 def _has_builder_match(builder: str, resolved_name: str, website: str) -> bool:

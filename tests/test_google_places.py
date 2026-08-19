@@ -241,6 +241,47 @@ class GooglePlacesClientTests(unittest.TestCase):
         self.assertEqual(competitors[0]["resolution_status"], "unverified")
         self.assertEqual(competitors[0]["url"], "")
 
+    def test_partial_name_and_wrong_locality_stay_unverified(self):
+        session = FakeSession(
+            {
+                "Tuxedo Terrace Apartments, Walnut, CA": [
+                    place(
+                        "partial",
+                        "Tuxedo Park Apartments",
+                        34.04,
+                        -117.82,
+                        "Walnut",
+                    )
+                ],
+                "Colina Apartments Walnut, Walnut, CA": [
+                    place(
+                        "wrong-city",
+                        "Colina Apartments",
+                        34.04,
+                        -117.82,
+                        "Pomona",
+                    )
+                ],
+            }
+        )
+        client = GooglePlacesClient("test-key", session=session)
+        _, competitors = client.select_competitors(
+            property_address="22045 Garibaldi Dr, Walnut, CA 91789",
+            fallback_location="Walnut, CA",
+            competitor_names=[
+                "Tuxedo Terrace Apartments",
+                "Colina Apartments Walnut",
+            ],
+        )
+        self.assertEqual(
+            [item["resolution_status"] for item in competitors],
+            ["unverified", "unverified"],
+        )
+        self.assertEqual(
+            [item["name"] for item in competitors],
+            ["Tuxedo Terrace Apartments", "Colina Apartments Walnut"],
+        )
+
     def test_supplied_builder_must_match_name_or_website(self):
         wrong = place(
             "wrong-builder",
