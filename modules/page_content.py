@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html.parser import HTMLParser
 from urllib.parse import urljoin
@@ -14,12 +15,18 @@ from modules.url_safety import validate_public_audit_url
 REQUEST_TIMEOUT = 20
 MAX_BYTES = 2 * 1024 * 1024
 MAX_REDIRECTS = 4
+MAX_FETCH_ATTEMPTS = 3
 MAX_BODY_CHARS = 6000
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/147.0.0.0 Safari/537.36"
 )
+REQUEST_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 SKIP_TAGS = {
     "script",
     "style",
@@ -131,13 +138,26 @@ class _VisibleTextParser(HTMLParser):
 
 def fetch_visible_body_copy(url: str) -> dict[str, str | int]:
     """Fetch one public HTML page and return cleaned visible body text."""
+    last_error: Exception | None = None
+    for attempt in range(MAX_FETCH_ATTEMPTS):
+        try:
+            return _fetch_visible_body_copy_once(url)
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if attempt + 1 >= MAX_FETCH_ATTEMPTS:
+                break
+            time.sleep(1.5 * (attempt + 1))
+    raise last_error or RuntimeError(f"Unable to fetch {url}")
+
+
+def _fetch_visible_body_copy_once(url: str) -> dict[str, str | int]:
     current_url = validate_public_audit_url(url)
     response = None
     for _ in range(MAX_REDIRECTS + 1):
         response = requests.get(
             current_url,
             timeout=REQUEST_TIMEOUT,
-            headers={"User-Agent": USER_AGENT},
+            headers=REQUEST_HEADERS,
             stream=True,
             allow_redirects=False,
         )
@@ -192,5 +212,9 @@ def fetch_body_copy_for_pages(
             try:
                 results[url] = future.result()
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"{url}: {exc.__class__.__name__}")
+                detail = exc.__class__.__name__
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status:
+                    detail = f"{detail} {status}"
+                errors.append(f"{url}: {detail}")
     return results, errors

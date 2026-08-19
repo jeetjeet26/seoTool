@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import patch
 
-from modules.page_content import _VisibleTextParser, fetch_body_copy_for_pages
+from modules.page_content import (
+    _VisibleTextParser,
+    fetch_body_copy_for_pages,
+    fetch_visible_body_copy,
+)
 
 
 class PageContentTests(unittest.TestCase):
@@ -45,6 +49,24 @@ class PageContentTests(unittest.TestCase):
         self.assertEqual(results["https://a.example/"]["body_text"], "Copy")
         self.assertEqual(len(errors), 1)
         self.assertIn("https://b.example/", errors[0])
+
+    def test_visible_copy_fetch_retries_transient_failures(self):
+        with (
+            patch("modules.page_content.time.sleep"),
+            patch(
+                "modules.page_content._fetch_visible_body_copy_once",
+                side_effect=[
+                    RuntimeError("blocked"),
+                    {
+                        "url": "https://a.example/",
+                        "body_text": "Copy",
+                        "body_word_count": 1,
+                    },
+                ],
+            ),
+        ):
+            result = fetch_visible_body_copy("https://a.example/")
+        self.assertEqual(result["body_text"], "Copy")
 
 
 if __name__ == "__main__":

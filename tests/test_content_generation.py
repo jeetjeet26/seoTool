@@ -215,6 +215,35 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertEqual(result["current_body_text"], "")
         self.assertIn("New paragraph block", result["rationale"])
 
+    def test_oversized_new_block_is_trimmed_instead_of_discarded(self):
+        proposed = " ".join(["Welcome"] * 50)
+        response = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "New homes in Walnut - Example",
+                    "meta_description": "D" * 140,
+                    "h1": "New Homes in Walnut",
+                    "content": proposed,
+                    "content_action": "new_block",
+                    "rationale": "Adds useful context.",
+                }
+            ]
+        )
+        result = ContentGenerator(agent=FakeAgent(responses=[response])).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/",
+                    "title": "Current title",
+                    "meta_description": "Current description",
+                    "body_word_count": 0,
+                }
+            ]
+        )[0]
+        self.assertEqual(result["content_action"], "new_block")
+        self.assertEqual(len(result["proposed_content"].split()), 35)
+        self.assertIn("new_content_block_trimmed", result["warnings"])
+
     def test_existing_mode_requires_title_and_description_rewrites_for_every_page(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)

@@ -23,6 +23,7 @@ from modules.agent import SEOAgent
 TITLE_MAX = 60
 DESCRIPTION_MIN = 130
 DESCRIPTION_MAX = 155
+NEW_BLOCK_MAX_WORDS = 35
 DEFAULT_CHUNK_SIZE = 10
 DEFAULT_P11_STYLE_GUIDE = (
     "Use approved P11 page-type patterns. Titles: maximum 60 characters; "
@@ -178,9 +179,10 @@ class ContentGenerator:
                 "available, return that complete paragraph with only a light edit: "
                 "change no more than 3-7 words, or preserve it and append one short "
                 "sentence. Do not rewrite the entire page or expand the paragraph. "
-                "When no paragraph block is available and copy is genuinely missing, "
-                "you may propose one short new paragraph and set content_action to "
-                "'new_block'. Otherwise use 'rewrite_block' for a light paragraph "
+                "When no paragraph block is available or visible copy could not be "
+                "fetched, propose one short new introductory paragraph of at most "
+                f"{NEW_BLOCK_MAX_WORDS} words and set content_action to 'new_block'. "
+                "Otherwise use 'rewrite_block' for a light paragraph "
                 "edit or 'none' when no copy change is needed. "
                 "Return an empty content field only when the current body copy "
                 "already serves the target query well."
@@ -225,11 +227,11 @@ Return ONLY a JSON array. One object per page with keys:
                 else:
                     proposed_content = ""
                     content_warning = "content_change_too_large"
-            elif len(proposed_content.split()) <= 35:
-                content_action = "new_block"
             else:
-                proposed_content = ""
-                content_warning = "new_content_block_too_large"
+                proposed_content, trimmed = _trim_new_block(proposed_content)
+                content_action = "new_block"
+                if trimmed:
+                    content_warning = "new_content_block_trimmed"
         rationale = _clean(entry.get("rationale"))
         if content_action == "new_block" and "new" not in rationale.lower():
             rationale = f"New paragraph block: {rationale}".strip()
@@ -380,6 +382,18 @@ def _all_metadata_rewritten(parsed: list[dict], pages: list[dict]) -> bool:
         ):
             return False
     return True
+
+
+def _trim_new_block(text: str) -> tuple[str, bool]:
+    words = text.split()
+    if not words:
+        return "", False
+    if len(words) <= NEW_BLOCK_MAX_WORDS:
+        return text, False
+    trimmed = " ".join(words[:NEW_BLOCK_MAX_WORDS]).rstrip(" ,;:")
+    if trimmed and trimmed[-1] not in ".!?":
+        trimmed += "."
+    return trimmed, True
 
 
 def _is_light_rewrite(current: str, proposed: str) -> bool:
