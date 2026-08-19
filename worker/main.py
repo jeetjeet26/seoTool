@@ -92,8 +92,16 @@ def process_job(
     try:
         with heartbeat(repository, job.id):
             sitemap_only = should_scope_to_sitemap(job.target_url, job.options)
+            configured_sitemap_urls = [
+                str(url).strip()
+                for url in job.options.get("sitemap_urls", [])
+                if str(url).strip()
+            ]
             allowed_urls = (
-                fetch_sitemap_urls(job.target_url) if sitemap_only else None
+                configured_sitemap_urls
+                or fetch_sitemap_urls(job.target_url)
+                if sitemap_only
+                else None
             )
             if sitemap_only and not allowed_urls:
                 raise RuntimeError(
