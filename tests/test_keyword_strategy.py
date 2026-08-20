@@ -247,6 +247,31 @@ class KeywordStrategyTests(unittest.TestCase):
             )
         )
 
+    def test_shared_knox_token_does_not_admit_a_competitor_brand(self):
+        results = build_keyword_strategy(
+            location="Hoover, Alabama",
+            target_url="https://ariseknoxsquare.com/",
+            property_name="Arise Knox Square",
+            vertical="senior_living",
+            rankings=[
+                {
+                    "keyword": "john knox manor retirement community",
+                    "volume": 210,
+                    "difficulty": 12,
+                    "landing_page": "https://ariseknoxsquare.com/",
+                },
+                {
+                    "keyword": "retirement community hoover",
+                    "volume": 90,
+                    "difficulty": 18,
+                    "landing_page": "https://ariseknoxsquare.com/",
+                },
+            ],
+        )
+        keywords = [item["keyword"] for item in results]
+        self.assertNotIn("john knox manor retirement community", keywords)
+        self.assertIn("retirement community hoover", keywords)
+
     def test_excluded_phrase_overrides_an_old_approved_target(self):
         results = build_keyword_strategy(
             location="Hoover",

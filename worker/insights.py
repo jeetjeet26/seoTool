@@ -24,8 +24,10 @@ from modules.pagespeed import PageSpeedClient
 from modules.semrush import SemrushClient
 from modules.site_inventory import (
     build_site_inventory,
+    calendar_pages_are_technical_only,
     events_are_technical_only,
-    is_event_page,
+    is_event_calendar_page,
+    is_event_detail_page,
     should_scope_to_sitemap,
 )
 from worker.repository import AuditJob
@@ -127,32 +129,51 @@ class InsightRunner:
             job.target_url,
             job.options,
         )
-        event_pages = [
-            page for page in inventory.pages if is_event_page(page.url)
-        ]
-        pages = (
-            [page for page in inventory.pages if not is_event_page(page.url)]
-            if event_technical_only
-            else inventory.pages
+        calendar_technical_only = calendar_pages_are_technical_only(
+            job.target_url,
+            job.options,
         )
-        result["event_page_treatment"] = (
-            "technical_only" if event_technical_only else "full_audit"
+        event_detail_pages = [
+            page for page in inventory.pages if is_event_detail_page(page.url)
+        ]
+        calendar_pages = [
+            page for page in inventory.pages if is_event_calendar_page(page.url)
+        ]
+        backlog_pages = [
+            *(event_detail_pages if event_technical_only else []),
+            *(calendar_pages if calendar_technical_only else []),
+        ]
+        backlog_urls = {page.url for page in backlog_pages}
+        pages = [
+            page for page in inventory.pages if page.url not in backlog_urls
+        ]
+        result["event_page_treatment"] = str(
+            job.options.get("event_page_treatment")
+            or ("event_details" if calendar_technical_only else "full_audit")
         )
         result["event_backlog"] = {
             "treatment": result["event_page_treatment"],
-            "page_count": len(event_pages),
+            "page_count": len(backlog_pages),
+            "detail_page_count": len(event_detail_pages),
+            "calendar_page_count": len(calendar_pages),
             "finding_count": 0,
             "issue_counts": {},
             "severity_counts": {},
         }
+        result["_calendar_nofollow_findings"] = _calendar_nofollow_findings(
+            [page.url for page in calendar_pages],
+            job.target_url,
+        )
         result["site_inventory"] = inventory.summary(pages)
         result["site_inventory"]["total_crawled_page_count"] = len(inventory.pages)
-        result["site_inventory"]["event_page_count"] = len(event_pages)
+        result["site_inventory"]["event_page_count"] = len(event_detail_pages)
+        result["site_inventory"]["event_calendar_page_count"] = len(calendar_pages)
         result["crawl_coverage"] = {
             **(result.get("crawl_coverage") or {}),
             "pages": len(pages),
             "total_pages": len(inventory.pages),
-            "event_pages": len(event_pages),
+            "event_pages": len(event_detail_pages),
+            "event_calendar_pages": len(calendar_pages),
         }
         intake = job.client_intake
         property_name = (
@@ -349,8 +370,13 @@ class InsightRunner:
         stored_page_copy = job.options.get("page_copy")
         if not isinstance(stored_page_copy, dict):
             stored_page_copy = {}
+        fetch_urls = [
+            page.url
+            for page in selected_pages
+            if not is_event_detail_page(page.url)
+        ]
         body_copy, body_copy_errors = fetch_body_copy_for_pages(
-            [page.url for page in selected_pages],
+            fetch_urls,
             stored_copy=stored_page_copy,
         )
         result["body_copy_coverage"] = {
@@ -385,13 +411,24 @@ class InsightRunner:
                 "body_word_count": body_copy.get(page.url, {}).get(
                     "body_word_count", 0
                 ),
+                "location": job.location,
             }
             for page in selected_pages
         ]
         if generation_pages:
             try:
                 generated_recommendations = [
-                    {**item, "requires_human_review": True}
+                    (
+                        {**item, "requires_human_review": True}
+                        if not is_event_detail_page(str(item.get("url") or ""))
+                        else {
+                            **item,
+                            "requires_human_review": True,
+                            "proposed_content": "",
+                            "current_body_text": "",
+                            "content_action": "none",
+                        }
+                    )
                     for item in self.generator.generate_bulk_metadata(
                         generation_pages,
                         mode="existing",
@@ -738,10 +775,48 @@ def _limit_content_recommendations(
     ]
 
 
-def _content_generation_pages(pages, sitemap_only: bool):
-    if not sitemap_only:
-        return pages
-    return [page for page in pages if not is_event_page(page.url)]
+def _content_generation_pages(pages, sitemap_only: bool = False):
+    return [page for page in pages if not is_event_calendar_page(page.url)]
+
+
+def _calendar_nofollow_findings(urls: list[str], target_url: str) -> list[Finding]:
+    calendar_urls = [
+        url for url in dict.fromkeys(urls) if is_event_calendar_page(url)
+    ]
+    if not calendar_urls:
+        return []
+    examples = calendar_urls[:8]
+    identity = hashlib.sha256(
+        "\x1f".join(["nofollow_calendar_pagination", target_url]).encode("utf-8")
+    ).hexdigest()
+    return [
+        Finding(
+            id=identity,
+            category="indexing",
+            severity=Severity.MEDIUM,
+            issue_type="nofollow_calendar_pagination",
+            page_url=calendar_urls[0],
+            resource_url="",
+            evidence=json.dumps(
+                {
+                    "count": len(calendar_urls),
+                    "sample_urls": examples,
+                },
+                sort_keys=True,
+            ),
+            recommendation=(
+                "Add rel=\"nofollow\" to internal links pointing at calendar "
+                "pagination, dated list views, and tribe_events query URLs. "
+                "Keep follow on individual /event/{slug}/ pages and write unique "
+                "titles and meta descriptions for those event pages."
+            ),
+            source_file="event_calendar",
+            metadata={
+                "calendar_url_count": len(calendar_urls),
+                "sample_urls": examples,
+            },
+        )
+    ]
 
 
 def _guard_excluded_recommendations(

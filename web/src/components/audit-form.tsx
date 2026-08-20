@@ -130,9 +130,10 @@ export function AuditForm() {
           <label className="toggle-row"><span><strong>Use sitemap URLs only</strong><small>Ignore archive, pagination, parameter, and automated URLs that are not listed in the XML sitemap.</small></span><input name="sitemapOnly" type="checkbox" /></label>
           <label>
             Event and past-event pages
-            <select name="eventPageTreatment" defaultValue="full_audit">
-              <option value="full_audit">Include in scoring and copy recommendations</option>
-              <option value="technical_only">Audit separately; exclude from score and copy</option>
+            <select name="eventPageTreatment" defaultValue="event_details">
+              <option value="event_details">Improve /event/ pages; nofollow calendar pagination</option>
+              <option value="full_audit">Include every event and calendar URL</option>
+              <option value="technical_only">Keep all event URLs out of score and copy</option>
             </select>
           </label>
           <details>

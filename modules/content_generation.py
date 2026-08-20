@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 from modules.agent import SEOAgent
 
 TITLE_MAX = 60
+TITLE_MIN = 50
 DESCRIPTION_MIN = 130
 DESCRIPTION_MAX = 155
 NEW_BLOCK_MAX_WORDS = 35
@@ -75,6 +76,14 @@ class ContentGenerator:
     def _generate_chunk(
         self, chunk: list[dict], mode: str, client_context: dict
     ) -> list[dict]:
+        chunk = [
+            {
+                **page,
+                "location": page.get("location") or client_context.get("location") or "",
+                "brand": page.get("brand") or client_context.get("name") or "",
+            }
+            for page in chunk
+        ]
         prompt = self._chunk_prompt(chunk, mode, client_context)
         system_prompt = (
             "You are an expert SEO copywriter. Match the site's industry, "
@@ -191,7 +200,7 @@ class ContentGenerator:
         return f"""{task}
 
 Rules:
-- Titles must be at most {TITLE_MAX} characters.
+- Titles must be {TITLE_MIN}-{TITLE_MAX} characters. Use as much of the {TITLE_MAX}-character limit as you can without stuffing.
 - Meta descriptions must be {DESCRIPTION_MIN}-{DESCRIPTION_MAX} characters.
 - Use one spaced hyphen as the preferred title separator. Never use em/en dashes, curly quotes, ellipses, or stacked separators.
 - Do not introduce a keyword that is not assigned to the page.
@@ -237,6 +246,7 @@ Return ONLY a JSON array. One object per page with keys:
             rationale = f"New paragraph block: {rationale}".strip()
         if mode == "existing" and proposed_title == current_title:
             proposed_title = _distinct_title(current_title, page)
+        proposed_title = _lengthen_title(proposed_title, page)
         result = {
             "url": page.get("url", ""),
             "mode": mode,
@@ -342,6 +352,8 @@ def validate_metadata(title: str, description: str) -> list[str]:
     warnings = []
     if title and len(title) > TITLE_MAX:
         warnings.append("title_over_60")
+    if title and len(title) < TITLE_MIN:
+        warnings.append("title_under_50")
     if description and len(description) > DESCRIPTION_MAX:
         warnings.append("description_over_155")
     if description and len(description) < DESCRIPTION_MIN:
@@ -416,6 +428,38 @@ def _is_light_rewrite(current: str, proposed: str) -> bool:
     if proposed_words[: len(current_words)] == current_words:
         return len(proposed_words) - len(current_words) <= 18
     return False
+
+
+def _lengthen_title(title: str, page: dict) -> str:
+    if not title or len(title) >= TITLE_MIN:
+        return title
+    location = _clean(page.get("location"))
+    keyword = _clean((page.get("keywords") or [""])[0])
+    hostname = (urlsplit(str(page.get("url") or "")).hostname or "").removeprefix(
+        "www."
+    )
+    brand = _clean(page.get("brand"))
+    if not brand:
+        raw_brand = hostname.split(".", 1)[0].replace("-", " ")
+        brand = raw_brand.title() if " " in raw_brand else ""
+    suffixes: list[str] = []
+    city = location.split(",")[0].strip() if location else ""
+    if city and city.lower() not in title.lower():
+        suffixes.append(f" in {location}")
+    if brand and brand.lower() not in title.lower():
+        suffixes.append(f" - {brand}")
+    candidate = title
+    for suffix in suffixes:
+        next_title = f"{candidate}{suffix}"
+        if len(next_title) <= TITLE_MAX:
+            candidate = next_title
+            if len(candidate) >= TITLE_MIN:
+                return candidate
+    if keyword and keyword.lower() not in candidate.lower():
+        next_title = f"{keyword.title()} - {candidate}"
+        if TITLE_MIN <= len(next_title) <= TITLE_MAX:
+            return next_title
+    return candidate
 
 
 def _distinct_title(current_title: str, page: dict) -> str:

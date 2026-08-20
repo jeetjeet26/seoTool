@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 from modules.site_inventory import (
     build_site_inventory,
+    is_event_calendar_page,
+    is_event_detail_page,
     is_event_page,
     load_crawled_pages,
     should_scope_to_sitemap,
@@ -61,6 +63,17 @@ class SiteInventoryTests(unittest.TestCase):
         self.assertTrue(is_event_page("https://ariseknoxsquare.com/events/"))
         self.assertTrue(
             is_event_page("https://ariseknoxsquare.com/event/open-house/")
+        )
+        self.assertTrue(
+            is_event_calendar_page(
+                "https://ariseknoxsquare.com/events/list/page/2/?tribe-bar-date=2025-11-21"
+            )
+        )
+        self.assertTrue(
+            is_event_detail_page("https://ariseknoxsquare.com/event/tailgates-tours/")
+        )
+        self.assertFalse(
+            is_event_calendar_page("https://ariseknoxsquare.com/event/tailgates-tours/")
         )
         self.assertFalse(
             is_event_page("https://ariseknoxsquare.com/amenities/")

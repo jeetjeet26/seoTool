@@ -249,16 +249,47 @@ def should_scope_to_sitemap(target_url: str, options: dict | None = None) -> boo
 def is_event_page(url: str) -> bool:
     """Identify calendar landing and event detail pages."""
 
+    return is_event_calendar_page(url) or is_event_detail_page(url)
+
+
+def is_event_detail_page(url: str) -> bool:
+    """Individual followable event URLs such as /event/tailgates-tours/."""
+
     path = urlsplit(url).path.lower()
-    return path == "/events/" or path.startswith("/events/") or path.startswith(
-        "/event/"
+    return path.startswith("/event/") and not path.startswith("/events/")
+
+
+def is_event_calendar_page(url: str) -> bool:
+    """Calendar indexes, pagination, and dated list views that should be nofollowed."""
+
+    parts = urlsplit(url)
+    path = parts.path.lower()
+    query = parts.query.lower()
+    if path == "/events" or path == "/events/" or path.startswith("/events/"):
+        return True
+    return any(
+        token in query
+        for token in ("tribe-bar-date", "tribe_events", "post_type=tribe_events")
     )
 
 
 def events_are_technical_only(target_url: str, options: dict | None = None) -> bool:
+    """True when individual /event/ pages stay out of scoring and copy."""
+
     treatment = str((options or {}).get("event_page_treatment") or "").strip()
-    if treatment:
-        return treatment == "technical_only"
+    return treatment == "technical_only"
+
+
+def calendar_pages_are_technical_only(
+    target_url: str, options: dict | None = None
+) -> bool:
+    """True when /events/ pagination and dated lists stay out of copy."""
+
+    treatment = str((options or {}).get("event_page_treatment") or "").strip()
+    if treatment == "full_audit":
+        return False
+    if treatment in {"technical_only", "event_details"}:
+        return True
     return (urlsplit(target_url).hostname or "").lower() in SITEMAP_ONLY_DOMAINS
 
 

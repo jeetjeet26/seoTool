@@ -19,9 +19,11 @@ from urllib.parse import urlsplit
 
 from modules.audit_service import AuditService
 from modules.site_inventory import (
+    calendar_pages_are_technical_only,
     events_are_technical_only,
     fetch_sitemap_urls,
-    is_event_page,
+    is_event_calendar_page,
+    is_event_detail_page,
     should_scope_to_sitemap,
 )
 from modules.models import AuditStage, AuditStatus, ProgressEvent
@@ -180,6 +182,10 @@ def process_job(
                 (insight_data.get("site_inventory") or {}).get("page_count") or 0
             )
             semrush_findings = insight_data.pop("_semrush_findings", [])
+            calendar_nofollow_findings = insight_data.pop(
+                "_calendar_nofollow_findings",
+                [],
+            )
             if valid_pages <= 0 and not semrush_findings:
                 raise RuntimeError(
                     "Crawl blocked or incomplete: neither the page fallback nor "
@@ -197,28 +203,45 @@ def process_job(
                 crawler_findings = _scope_findings(crawler_findings, allowed_urls)
                 semrush_findings = _scope_findings(semrush_findings, allowed_urls)
             combined_findings = _deduplicate_findings(
-                [*crawler_findings, *semrush_findings]
+                [
+                    *crawler_findings,
+                    *semrush_findings,
+                    *calendar_nofollow_findings,
+                ]
             )
-            if events_are_technical_only(job.target_url, job.options):
-                event_findings = [
+            backlog_findings = []
+            if calendar_pages_are_technical_only(job.target_url, job.options):
+                backlog_findings.extend(
                     finding
                     for finding in combined_findings
-                    if is_event_page(finding.page_url)
-                ]
+                    if is_event_calendar_page(finding.page_url)
+                    and finding.issue_type != "nofollow_calendar_pagination"
+                )
+            if events_are_technical_only(job.target_url, job.options):
+                backlog_findings.extend(
+                    finding
+                    for finding in combined_findings
+                    if is_event_detail_page(finding.page_url)
+                )
+            if backlog_findings:
+                backlog_ids = {finding.id for finding in backlog_findings}
                 combined_findings = [
                     finding
                     for finding in combined_findings
-                    if not is_event_page(finding.page_url)
+                    if finding.id not in backlog_ids
                 ]
-                insight_data["event_backlog"] = _event_backlog_summary(
-                    event_findings,
-                    int(
-                        (insight_data.get("event_backlog") or {}).get(
-                            "page_count"
-                        )
-                        or 0
+                insight_data["event_backlog"] = {
+                    **(insight_data.get("event_backlog") or {}),
+                    **_event_backlog_summary(
+                        backlog_findings,
+                        int(
+                            (insight_data.get("event_backlog") or {}).get(
+                                "page_count"
+                            )
+                            or 0
+                        ),
                     ),
-                )
+                }
             normalization_gaps = _inventory_normalization_gaps(
                 insight_data.get("site_inventory") or {},
                 combined_findings,

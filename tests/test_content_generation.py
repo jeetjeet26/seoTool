@@ -24,7 +24,7 @@ class FakeAgent:
             [
                 {
                     "index": index + 1,
-                    "title": f"Title {index + 1}",
+                    "title": f"Senior living apartments in Hoover AL {index + 1}",
                     "meta_description": "D" * 140,
                     "h1": f"H1 {index + 1}",
                     "content": "",
@@ -54,8 +54,11 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertEqual(len(results), 5)
         self.assertEqual(len(agent.prompts), 3)  # 2 + 2 + 1
         self.assertEqual(progress[-1], 5)
-        self.assertEqual(results[0]["proposed_title"], "Title 1")
-        self.assertEqual(results[0]["warnings"], [])
+        self.assertEqual(
+            results[0]["proposed_title"],
+            "Senior living apartments in Hoover AL 1",
+        )
+        self.assertIn("title_under_50", results[0]["warnings"])
 
     def test_failed_chunk_marks_items_and_run_continues(self):
         bad = "not json at all"
@@ -66,7 +69,7 @@ class ContentGenerationTests(unittest.TestCase):
         )
         self.assertEqual(results[0]["error"], "generation_failed")
         self.assertNotIn("error", results[1])
-        self.assertEqual(results[1]["proposed_title"], "Title 1")
+        self.assertTrue(results[1]["proposed_title"].startswith("Senior living apartments"))
 
     def test_fair_housing_guidelines_are_used_when_client_enables_them(self):
         agent = FakeAgent()
@@ -244,6 +247,36 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertEqual(len(result["proposed_content"].split()), 35)
         self.assertIn("new_content_block_trimmed", result["warnings"])
 
+    def test_short_titles_are_lengthened_toward_sixty_characters(self):
+        response = json.dumps(
+            [
+                {
+                    "index": 1,
+                    "title": "News - Senior Apartments Hoover",
+                    "meta_description": "D" * 140,
+                    "h1": "News",
+                    "content": "",
+                    "rationale": "Uses the page keyword.",
+                }
+            ]
+        )
+        result = ContentGenerator(agent=FakeAgent(responses=[response])).generate_bulk_metadata(
+            [
+                {
+                    "url": "https://ariseknoxsquare.com/news/",
+                    "title": "News",
+                    "meta_description": "Current description",
+                    "keywords": ["senior apartments hoover"],
+                }
+            ],
+            client_context={
+                "name": "Arise Knox Square",
+                "location": "Hoover, Alabama",
+            },
+        )[0]
+        self.assertGreaterEqual(len(result["proposed_title"]), 50)
+        self.assertLessEqual(len(result["proposed_title"]), 60)
+
     def test_existing_mode_requires_title_and_description_rewrites_for_every_page(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)
@@ -361,7 +394,14 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("title_over_60", validate_metadata("x" * 61, "d" * 140))
         self.assertIn("description_over_155", validate_metadata("ok", "d" * 156))
         self.assertIn("description_under_130", validate_metadata("ok", "short"))
-        self.assertEqual(validate_metadata("ok", "d" * 140), [])
+        self.assertIn("title_under_50", validate_metadata("ok", "d" * 140))
+        self.assertEqual(
+            validate_metadata(
+                "Senior apartments in Hoover AL - Arise Knox Square",
+                "d" * 140,
+            ),
+            [],
+        )
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ export async function queueAudit(
     formData.get("communityType") ?? "multifamily",
   );
   const eventPageTreatment = String(
-    formData.get("eventPageTreatment") ?? "full_audit",
+    formData.get("eventPageTreatment") ?? "event_details",
   );
   let nearbyNeighborhoods: string[];
   let excludedKeywords: string[];
@@ -97,7 +97,7 @@ export async function queueAudit(
   if (!["cloud", "local", "cloud_fallback"].includes(crawlSource)) {
     return { error: "Choose a valid crawl source." };
   }
-  if (!["full_audit", "technical_only"].includes(eventPageTreatment)) {
+  if (!["full_audit", "technical_only", "event_details"].includes(eventPageTreatment)) {
     return { error: "Choose a valid event-page treatment." };
   }
   if (
@@ -179,7 +179,7 @@ export async function queueAudit(
         excluded_keywords: excludedKeywords,
         event_page_treatment:
           targetDomain === "ariseknoxsquare.com"
-            ? "technical_only"
+            ? "event_details"
             : eventPageTreatment,
       },
       status: awaitingUpload ? "draft" : "queued",

@@ -182,7 +182,10 @@ class InsightRunnerTests(unittest.TestCase):
 
         self.assertEqual(
             [page.url for page in selected],
-            ["https://ariseknoxsquare.com/amenities/"],
+            [
+                "https://ariseknoxsquare.com/amenities/",
+                "https://ariseknoxsquare.com/event/open-house/",
+            ],
         )
 
     def test_keyword_targets_vary_by_page_and_preserve_approved_assignments(self):

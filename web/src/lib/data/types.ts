@@ -140,7 +140,7 @@ export interface AuditSummary {
   competitors?: CompetitorMetric[];
   competitor_communities?: CompetitorCommunity[];
   nearby_neighborhoods?: string[];
-  event_page_treatment?: "full_audit" | "technical_only";
+  event_page_treatment?: "full_audit" | "technical_only" | "event_details";
   event_backlog?: {
     treatment?: "full_audit" | "technical_only";
     page_count?: number;

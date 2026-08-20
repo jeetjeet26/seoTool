@@ -240,6 +240,7 @@ def is_relevant_keyword(
     competitor_phrases: tuple[str, ...] = (),
     location_phrases: tuple[str, ...] = (),
     location_suffix_tokens: set[str] | None = None,
+    primary_brand_tokens: set[str] | None = None,
 ) -> bool:
     """Require property fit and market intent while rejecting unsafe targets."""
     lowered = " ".join(keyword.lower().split())
@@ -259,8 +260,32 @@ def is_relevant_keyword(
         )
         if location_phrases
         else bool(tokens & location_tokens)
-    ) or bool(tokens & brand_tokens)
+    ) or _has_client_brand_signal(tokens, brand_tokens, primary_brand_tokens)
     return has_housing_intent and has_market_signal
+
+
+def _has_client_brand_signal(
+    tokens: set[str],
+    brand_tokens: set[str],
+    primary_brand_tokens: set[str] | None = None,
+) -> bool:
+    """Require a distinctive brand match, not a shared word such as knox."""
+
+    if not brand_tokens:
+        return False
+    if primary_brand_tokens:
+        return bool(tokens & primary_brand_tokens) or len(tokens & brand_tokens) >= 2
+    return bool(tokens & brand_tokens)
+
+
+def _primary_brand_tokens(property_name: str) -> set[str]:
+    skip = {"www", "com", "net", "org", "the", "and", "for", "apartments"}
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", property_name.lower())
+        if token not in skip and len(token) > 2
+    ]
+    return {tokens[0]} if tokens else set()
 
 
 def _has_approved_location(
@@ -381,6 +406,7 @@ def build_keyword_strategy(
     # validated as a location phrase so lookalike markets such as Walnut Creek
     # cannot pass through the brand-token shortcut.
     brand_tokens -= location_tokens
+    primary_brand_tokens = _primary_brand_tokens(property_name) - location_tokens
     location_suffix_tokens = {
         token
         for value in all_locations
@@ -453,6 +479,7 @@ def build_keyword_strategy(
                 competitor_phrases,
                 location_phrases,
                 location_suffix_tokens,
+                primary_brand_tokens,
             )
         ):
             continue
@@ -482,6 +509,7 @@ def build_keyword_strategy(
                 competitor_phrases,
                 location_phrases,
                 location_suffix_tokens,
+                primary_brand_tokens,
             )
         ):
             continue
@@ -514,6 +542,7 @@ def build_keyword_strategy(
                 competitor_phrases,
                 location_phrases,
                 location_suffix_tokens,
+                primary_brand_tokens,
             )
         ):
             metrics = normalized_seed_metrics.get(keyword, {})

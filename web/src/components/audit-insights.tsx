@@ -191,10 +191,10 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
 
 function EventBacklog({ summary }: { summary: AuditSummary }) {
   const backlog = summary.event_backlog;
-  if (backlog?.treatment !== "technical_only" || !backlog.page_count) return null;
+  if (!backlog?.page_count) return null;
   const issues = Object.entries(backlog.issue_counts ?? {});
   return <section className="card report-section">
-    <div className="section-title"><div><h2>Event page technical backlog</h2><p>Event and past-event pages were checked separately. They do not affect the health score, keyword targets, or copy recommendations.</p></div></div>
+    <div className="section-title"><div><h2>Calendar pagination backlog</h2><p>Dated list views and /events/ pagination stay out of scoring and copy. Individual /event/ pages are included in titles, descriptions, keywords, and technical SEO. Add nofollow to pagination and dated calendar links.</p></div></div>
     <div className="insight-metrics">
       <article><span>Event pages</span><strong>{formatNumber(backlog.page_count)}</strong></article>
       <article><span>Technical occurrences</span><strong>{formatNumber(backlog.finding_count)}</strong></article>
