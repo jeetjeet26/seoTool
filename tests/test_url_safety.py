@@ -41,6 +41,8 @@ class UrlSafetyTests(unittest.TestCase):
     def test_rejects_invalid_port(self):
         with self.assertRaises(UnsafeAuditUrl):
             validate_public_audit_url("https://example.com:not-a-port")
+        with self.assertRaises(UnsafeAuditUrl):
+            validate_public_audit_url("https://[overture tributary]")
 
 
 if __name__ == "__main__":

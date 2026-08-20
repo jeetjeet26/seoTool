@@ -104,6 +104,22 @@ class GooglePlacesClientTests(unittest.TestCase):
         )
         self.assertEqual(domains, ["example.com"])
 
+    def test_bracketed_community_names_are_not_treated_as_ipv6_hosts(self):
+        names, domains = split_competitor_inputs(
+            "[overture tributary]\n"
+            "[avenues of south hoover]\n"
+            "[filmont liberty park"
+        )
+        self.assertEqual(
+            names,
+            [
+                "overture tributary",
+                "avenues of south hoover",
+                "filmont liberty park",
+            ],
+        )
+        self.assertEqual(domains, [])
+
     def test_selects_nearby_place_and_rejects_walnut_creek(self):
         session = FakeSession(
             {

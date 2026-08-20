@@ -292,6 +292,7 @@ class CompetitorInputError extends Error {}
 function cleanCompetitorLine(value: string): string {
   return value
     .trim()
+    .replace(/^\[+|\]+$/g, "")
     .replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "")
     .replace(/[,.]+$/, "")
     .trim();

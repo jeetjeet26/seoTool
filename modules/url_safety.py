@@ -21,7 +21,10 @@ def validate_public_audit_url(url: str) -> str:
     if not isinstance(url, str) or not url.strip():
         raise UnsafeAuditUrl("A website URL is required")
 
-    parsed = urlsplit(url.strip())
+    try:
+        parsed = urlsplit(url.strip())
+    except ValueError as exc:
+        raise UnsafeAuditUrl("The audit URL contains an invalid hostname") from exc
     if parsed.scheme.lower() not in {"http", "https"}:
         raise UnsafeAuditUrl("Only http and https URLs can be audited")
     if not parsed.hostname:
@@ -35,7 +38,10 @@ def validate_public_audit_url(url: str) -> str:
     if port and port not in {80, 443}:
         raise UnsafeAuditUrl("Only standard web ports 80 and 443 are allowed")
 
-    hostname = parsed.hostname.rstrip(".").lower()
+    try:
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+    except ValueError as exc:
+        raise UnsafeAuditUrl("The audit URL contains an invalid hostname") from exc
     if hostname == "localhost" or hostname.endswith(".localhost"):
         raise UnsafeAuditUrl("Localhost cannot be audited")
 

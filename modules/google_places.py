@@ -232,6 +232,7 @@ def split_competitor_inputs(value: Any) -> tuple[list[str], list[str]]:
     names: list[str] = []
     domains: list[str] = []
     for entry in entries:
+        entry = unwrap_competitor_label(entry)
         domain = _domain(entry)
         if domain and (
             "://" in entry
@@ -456,8 +457,19 @@ def _normalize(value: str) -> str:
 
 
 def _domain(value: str) -> str:
-    raw = value.strip()
-    if not raw:
+    raw = unwrap_competitor_label(value)
+    if not raw or " " in raw:
         return ""
-    parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
-    return (parsed.hostname or "").lower().removeprefix("www.")
+    try:
+        parsed = urlsplit(raw if "://" in raw else f"https://{raw}")
+        hostname = parsed.hostname or ""
+    except ValueError:
+        return ""
+    return hostname.lower().removeprefix("www.")
+
+
+def unwrap_competitor_label(value: str) -> str:
+    text = str(value or "").strip()
+    if text.startswith("[") and "://" not in text:
+        text = text.removeprefix("[").removesuffix("]").strip()
+    return text

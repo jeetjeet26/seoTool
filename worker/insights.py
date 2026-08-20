@@ -15,7 +15,11 @@ from urllib.parse import urlsplit
 
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
-from modules.google_places import GooglePlacesClient, split_competitor_inputs
+from modules.google_places import (
+    GooglePlacesClient,
+    split_competitor_inputs,
+    unwrap_competitor_label,
+)
 from modules.http_inventory import build_http_inventory
 from modules.keyword_strategy import build_keyword_strategy, seed_phrases
 from modules.models import Finding, Severity
@@ -219,8 +223,12 @@ class InsightRunner:
         community_names = list(
             dict.fromkeys(
                 [
-                    *_list_values(job.options.get("competitor_names")),
-                    *intake_community_names,
+                    unwrap_competitor_label(name)
+                    for name in [
+                        *_list_values(job.options.get("competitor_names")),
+                        *intake_community_names,
+                    ]
+                    if unwrap_competitor_label(name)
                 ]
             )
         )
@@ -567,7 +575,14 @@ def _merge_competitors(
 
 
 def _normalize_domain(value: str) -> str:
-    return value.strip().lower().removeprefix("www.")
+    raw = unwrap_competitor_label(value)
+    if not raw or " " in raw:
+        return ""
+    try:
+        hostname = urlsplit(raw if "://" in raw else f"https://{raw}").hostname or ""
+    except ValueError:
+        return ""
+    return hostname.lower().removeprefix("www.")
 
 
 def _list_values(value) -> list[str]:
@@ -583,13 +598,11 @@ def _list_values(value) -> list[str]:
 def _competitor_terms(values: list[str]) -> list[str]:
     terms: set[str] = set()
     for value in values:
-        lowered = value.strip().lower()
+        lowered = unwrap_competitor_label(value).lower()
         if not lowered:
             continue
         terms.add(lowered)
-        domain = _normalize_domain(urlsplit(
-            lowered if "://" in lowered else f"https://{lowered}"
-        ).hostname or "")
+        domain = _normalize_domain(lowered)
         if domain:
             brand = domain.split(".", 1)[0].replace("-", " ")
             if len(brand) > 2:
