@@ -135,6 +135,7 @@ export interface AuditSummary {
     pages?: number;
     total_pages?: number;
     event_pages?: number;
+    event_calendar_pages?: number;
     failed?: number;
   };
   competitors?: CompetitorMetric[];
@@ -142,7 +143,7 @@ export interface AuditSummary {
   nearby_neighborhoods?: string[];
   event_page_treatment?: "full_audit" | "technical_only" | "event_details";
   event_backlog?: {
-    treatment?: "full_audit" | "technical_only";
+    treatment?: "full_audit" | "technical_only" | "event_details";
     page_count?: number;
     finding_count?: number;
     issue_counts?: Record<string, number>;

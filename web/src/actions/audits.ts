@@ -97,7 +97,7 @@ export async function queueAudit(
   if (!["cloud", "local", "cloud_fallback"].includes(crawlSource)) {
     return { error: "Choose a valid crawl source." };
   }
-  if (!["full_audit", "technical_only", "event_details"].includes(eventPageTreatment)) {
+  if (!["full_audit", "event_details"].includes(eventPageTreatment)) {
     return { error: "Choose a valid event-page treatment." };
   }
   if (
@@ -178,9 +178,7 @@ export async function queueAudit(
         nearby_neighborhoods: nearbyNeighborhoods,
         excluded_keywords: excludedKeywords,
         event_page_treatment:
-          targetDomain === "ariseknoxsquare.com"
-            ? "event_details"
-            : eventPageTreatment,
+          eventPageTreatment === "full_audit" ? "full_audit" : "event_details",
       },
       status: awaitingUpload ? "draft" : "queued",
       current_stage: awaitingUpload ? "awaiting_upload" : "queued",

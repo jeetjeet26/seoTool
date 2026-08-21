@@ -19,11 +19,7 @@ from urllib.parse import urlsplit
 
 from modules.audit_service import AuditService
 from modules.site_inventory import (
-    calendar_pages_are_technical_only,
-    events_are_technical_only,
     fetch_sitemap_urls,
-    is_event_calendar_page,
-    is_event_detail_page,
     should_scope_to_sitemap,
 )
 from modules.models import AuditStage, AuditStatus, ProgressEvent
@@ -209,39 +205,13 @@ def process_job(
                     *calendar_nofollow_findings,
                 ]
             )
-            backlog_findings = []
-            if calendar_pages_are_technical_only(job.target_url, job.options):
-                backlog_findings.extend(
-                    finding
-                    for finding in combined_findings
-                    if is_event_calendar_page(finding.page_url)
-                    and finding.issue_type != "nofollow_calendar_pagination"
-                )
-            if events_are_technical_only(job.target_url, job.options):
-                backlog_findings.extend(
-                    finding
-                    for finding in combined_findings
-                    if is_event_detail_page(finding.page_url)
-                )
-            if backlog_findings:
-                backlog_ids = {finding.id for finding in backlog_findings}
-                combined_findings = [
-                    finding
-                    for finding in combined_findings
-                    if finding.id not in backlog_ids
-                ]
-                insight_data["event_backlog"] = {
-                    **(insight_data.get("event_backlog") or {}),
-                    **_event_backlog_summary(
-                        backlog_findings,
-                        int(
-                            (insight_data.get("event_backlog") or {}).get(
-                                "page_count"
-                            )
-                            or 0
-                        ),
-                    ),
-                }
+            insight_data["event_backlog"] = {
+                "treatment": insight_data.get("event_page_treatment") or "event_details",
+                "page_count": 0,
+                "finding_count": 0,
+                "issue_counts": {},
+                "severity_counts": {},
+            }
             normalization_gaps = _inventory_normalization_gaps(
                 insight_data.get("site_inventory") or {},
                 combined_findings,
@@ -256,7 +226,7 @@ def process_job(
                         "message": (
                             "Crawl evidence could not be converted into findings for: "
                             + ", ".join(normalization_gaps)
-                            + ". Health scoring is unavailable for this run."
+                            + "."
                         ),
                     }
                 )
@@ -295,15 +265,9 @@ def process_job(
                 (insight_data.get("semrush_site_audit") or {}).get("scoped_pages")
                 or 0
             )
-            score = (
-                None
-                if normalization_gaps
-                else _health_score(severity_counts, pages_scanned)
-            )
             summary = {
                 "finding_count": finding_count,
                 "pages_scanned": pages_scanned,
-                "score": score,
                 "severity_counts": dict(severity_counts),
                 "category_counts": dict(category_counts),
                 "target_url": job.target_url,
@@ -450,17 +414,6 @@ def _has_valid_html_export(path: Path) -> bool:
     return False
 
 
-def _health_score(severity_counts: Counter, pages_scanned: int) -> int:
-    weights = {"critical": 10, "high": 5, "medium": 2, "low": 0.5, "info": 0}
-    penalty = sum(
-        weights.get(severity, 1) * count
-        for severity, count in severity_counts.items()
-    )
-    scale = max(1, pages_scanned / 10)
-    score = max(0, min(100, round(100 - penalty / scale)))
-    return min(99, score) if penalty > 0 else score
-
-
 def _inventory_normalization_gaps(
     inventory: dict,
     findings,
@@ -482,20 +435,6 @@ def _inventory_normalization_gaps(
         for issue_type, count in expected.items()
         if count > 0 and issue_type not in actual_types
     ]
-
-
-def _event_backlog_summary(findings, page_count: int) -> dict:
-    issue_counts = Counter(finding.issue_type for finding in findings)
-    severity_counts = Counter(finding.severity.value for finding in findings)
-    affected_urls = sorted({finding.page_url for finding in findings})
-    return {
-        "treatment": "technical_only",
-        "page_count": page_count,
-        "finding_count": len(findings),
-        "issue_counts": dict(issue_counts.most_common()),
-        "severity_counts": dict(severity_counts),
-        "sample_urls": affected_urls[:5],
-    }
 
 
 def _scope_findings(findings, allowed_urls):

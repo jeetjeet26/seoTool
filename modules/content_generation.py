@@ -19,6 +19,7 @@ from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
 from modules.agent import SEOAgent
+from modules.site_inventory import is_event_detail_page
 
 TITLE_MAX = 60
 TITLE_MIN = 50
@@ -169,6 +170,21 @@ class ContentGenerator:
                 context_lines.append(f"- {key.replace('_', ' ').title()}: {value}")
         context_text = "\n".join(context_lines) or "- None provided"
 
+        event_pages = [
+            page for page in chunk if is_event_detail_page(str(page.get("url") or ""))
+        ]
+        event_rules = ""
+        if event_pages:
+            event_rules = (
+                "- For /event/{slug}/ pages, write unique event SEO around the event "
+                "name from the URL or on-page copy, plus the community name. Do not "
+                "reuse homepage lease, floor-plan, or amenities phrasing. Use facts "
+                "from that page's visible body copy (what the event is, date, time, "
+                "and location). If the event looks past or undated, still write a "
+                "useful unique title, description, and short intro from the available "
+                "facts.\n"
+            )
+
         if mode == "development":
             task = (
                 "These pages belong to a new or in-development property website. "
@@ -184,8 +200,10 @@ class ContentGenerator:
                 "only where the current H1 is missing, duplicated, off-target, or "
                 "violates the approved style guide; otherwise return the current H1. "
                 "Analyze the supplied visible body copy for search intent, topical "
-                "depth, clarity, and keyword alignment. When a paragraph block is "
-                "available, return that complete paragraph with only a light edit: "
+                "depth, clarity, and keyword alignment. Visible body copy on the "
+                "page is an approved source of facts, especially for event pages. "
+                "When a paragraph block is available, return that complete paragraph "
+                "with only a light edit: "
                 "change no more than 3-7 words, or preserve it and append one short "
                 "sentence. Do not rewrite the entire page or expand the paragraph. "
                 "When no paragraph block is available or visible copy could not be "
@@ -205,7 +223,8 @@ Rules:
 - Use one spaced hyphen as the preferred title separator. Never use em/en dashes, curly quotes, ellipses, or stacked separators.
 - Do not introduce a keyword that is not assigned to the page.
 - Keep on-page edits minimal: at most seven altered words or one short added sentence.
-- Use only facts from the approved client context below. Never invent amenities, prices, or availability.
+- Use only facts from the approved client context below and the page's visible body copy. Never invent amenities, prices, or availability.
+{event_rules}
 {"- All copy must follow the supplied Fair Housing safeguards." if client_context.get("fair_housing_enabled") else ""}
 
 Approved client context (use only these facts):

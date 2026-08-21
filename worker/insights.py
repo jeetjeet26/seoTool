@@ -29,7 +29,6 @@ from modules.semrush import SemrushClient
 from modules.site_inventory import (
     build_site_inventory,
     calendar_pages_are_technical_only,
-    events_are_technical_only,
     is_event_calendar_page,
     is_event_detail_page,
     should_scope_to_sitemap,
@@ -129,10 +128,6 @@ class InsightRunner:
                 "pages": len(inventory.pages),
                 "scope": "sitemap_only" if sitemap_only else "full_crawl",
             }
-        event_technical_only = events_are_technical_only(
-            job.target_url,
-            job.options,
-        )
         calendar_technical_only = calendar_pages_are_technical_only(
             job.target_url,
             job.options,
@@ -143,21 +138,15 @@ class InsightRunner:
         calendar_pages = [
             page for page in inventory.pages if is_event_calendar_page(page.url)
         ]
-        backlog_pages = [
-            *(event_detail_pages if event_technical_only else []),
-            *(calendar_pages if calendar_technical_only else []),
-        ]
-        backlog_urls = {page.url for page in backlog_pages}
         pages = [
-            page for page in inventory.pages if page.url not in backlog_urls
+            page
+            for page in inventory.pages
+            if not (calendar_technical_only and is_event_calendar_page(page.url))
         ]
-        result["event_page_treatment"] = str(
-            job.options.get("event_page_treatment")
-            or ("event_details" if calendar_technical_only else "full_audit")
-        )
+        result["event_page_treatment"] = "event_details"
         result["event_backlog"] = {
-            "treatment": result["event_page_treatment"],
-            "page_count": len(backlog_pages),
+            "treatment": "event_details",
+            "page_count": 0,
             "detail_page_count": len(event_detail_pages),
             "calendar_page_count": len(calendar_pages),
             "finding_count": 0,
@@ -373,18 +362,12 @@ class InsightRunner:
             job.target_url,
         )
 
-        content_pages = _content_generation_pages(pages, sitemap_only)
-        selected_pages = content_pages[:MAX_GENERATION_PAGES]
+        selected_pages = _content_generation_pages(pages)
         stored_page_copy = job.options.get("page_copy")
         if not isinstance(stored_page_copy, dict):
             stored_page_copy = {}
-        fetch_urls = [
-            page.url
-            for page in selected_pages
-            if not is_event_detail_page(page.url)
-        ]
         body_copy, body_copy_errors = fetch_body_copy_for_pages(
-            fetch_urls,
+            [page.url for page in selected_pages],
             stored_copy=stored_page_copy,
         )
         result["body_copy_coverage"] = {
@@ -426,17 +409,7 @@ class InsightRunner:
         if generation_pages:
             try:
                 generated_recommendations = [
-                    (
-                        {**item, "requires_human_review": True}
-                        if not is_event_detail_page(str(item.get("url") or ""))
-                        else {
-                            **item,
-                            "requires_human_review": True,
-                            "proposed_content": "",
-                            "current_body_text": "",
-                            "content_action": "none",
-                        }
-                    )
+                    {**item, "requires_human_review": True}
                     for item in self.generator.generate_bulk_metadata(
                         generation_pages,
                         mode="existing",
@@ -687,6 +660,9 @@ def _page_keyword_targets(
             if remaining:
                 offset = seed % len(remaining)
                 remaining = remaining[offset:] + remaining[:offset]
+            # Event pages should not inherit leftover lease/floor-plan keywords.
+            if is_event_detail_page(page.url):
+                remaining = []
             ordered = [*exact, *topical, *remaining]
 
         for item in ordered:
@@ -695,6 +671,9 @@ def _page_keyword_targets(
                 chosen.append(keyword)
             if len(chosen) >= per_page:
                 break
+        event_name = _event_name_from_url(page.url)
+        if event_name and event_name not in chosen:
+            chosen = [event_name, *chosen][:per_page]
         results[page.url] = chosen[:per_page]
     return results
 
@@ -768,18 +747,27 @@ def _limit_content_recommendations(
             for item in recommendations
         ]
 
+    event_urls = {
+        item.get("url")
+        for item in recommendations
+        if item.get("proposed_content")
+        and is_event_detail_page(str(item.get("url") or ""))
+    }
     content_candidates = sorted(
         (
             item
             for item in recommendations
             if item.get("proposed_content")
+            and not is_event_detail_page(str(item.get("url") or ""))
         ),
         key=lambda item: (
             int(item.get("current_body_word_count") or 0),
             item.get("url", ""),
         ),
     )
-    selected_urls = {item.get("url") for item in content_candidates[:7]}
+    selected_urls = {
+        item.get("url") for item in content_candidates[:7]
+    } | event_urls
     return [
         item
         if item.get("url") in selected_urls
@@ -788,8 +776,22 @@ def _limit_content_recommendations(
     ]
 
 
-def _content_generation_pages(pages, sitemap_only: bool = False):
-    return [page for page in pages if not is_event_calendar_page(page.url)]
+def _content_generation_pages(pages, sitemap_only: bool = False, limit: int = MAX_GENERATION_PAGES):
+    eligible = [page for page in pages if not is_event_calendar_page(page.url)]
+    core = [page for page in eligible if not is_event_detail_page(page.url)]
+    events = [page for page in eligible if is_event_detail_page(page.url)]
+    if len(core) + len(events) <= limit:
+        return [*core, *events]
+    event_budget = min(len(events), max(limit // 2, limit - len(core)))
+    core_budget = max(0, limit - event_budget)
+    return [*core[:core_budget], *events[:event_budget]]
+
+
+def _event_name_from_url(url: str) -> str:
+    parts = [part for part in urlsplit(url).path.lower().split("/") if part]
+    if len(parts) >= 2 and parts[0] == "event":
+        return parts[1].replace("-", " ").strip()
+    return ""
 
 
 def _calendar_nofollow_findings(urls: list[str], target_url: str) -> list[Finding]:

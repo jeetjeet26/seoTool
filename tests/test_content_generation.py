@@ -101,6 +101,23 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertIn("Rooftop pool", user_prompt)
         self.assertIn("Never invent amenities", user_prompt)
 
+    def test_event_pages_get_event_specific_writing_rules(self):
+        agent = FakeAgent()
+        generator = ContentGenerator(agent=agent)
+        generator.generate_bulk_metadata(
+            [
+                {
+                    "url": "https://example.com/event/open-house/",
+                    "body_text": "Saturday tour of the clubhouse.",
+                    "body_word_count": 5,
+                }
+            ]
+        )
+        _system, user_prompt = agent.prompts[0]
+        self.assertIn("unique event SEO", user_prompt)
+        self.assertIn("Saturday tour of the clubhouse.", user_prompt)
+        self.assertIn("visible body copy", user_prompt)
+
     def test_visible_body_copy_is_included_for_content_gap_analysis(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)

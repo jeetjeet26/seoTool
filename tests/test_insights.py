@@ -10,6 +10,7 @@ from worker.insights import (
     InsightRunner,
     _content_generation_pages,
     _guard_excluded_recommendations,
+    _limit_content_recommendations,
     _page_keyword_targets,
 )
 from worker.repository import AuditJob
@@ -188,6 +189,57 @@ class InsightRunnerTests(unittest.TestCase):
             ],
         )
 
+    def test_event_pages_keep_on_page_copy_recommendations(self):
+        limited = _limit_content_recommendations(
+            [
+                {
+                    "url": "https://example.com/amenities/",
+                    "proposed_content": "Core amenities copy.",
+                    "current_body_word_count": 80,
+                },
+                {
+                    "url": "https://example.com/event/open-house/",
+                    "proposed_content": "Join the community open house.",
+                    "current_body_text": "Open house details.",
+                    "current_body_word_count": 12,
+                },
+            ],
+            "full_client",
+        )
+        by_url = {item["url"]: item for item in limited}
+        self.assertEqual(
+            by_url["https://example.com/event/open-house/"]["proposed_content"],
+            "Join the community open house.",
+        )
+        self.assertEqual(
+            by_url["https://example.com/amenities/"]["proposed_content"],
+            "Core amenities copy.",
+        )
+
+    def test_event_pages_do_not_inherit_generic_keywords(self):
+        pages = [
+            SimpleNamespace(
+                url="https://example.com/",
+                title="Apartments in Knoxville",
+                h1="Home",
+            ),
+            SimpleNamespace(
+                url="https://example.com/event/tailgates-tours/",
+                title="Tailgates and Tours",
+                h1="Tailgates",
+            ),
+        ]
+        keywords = [
+            {"keyword": "apartments knoxville", "source": "seed", "score": 80},
+            {"keyword": "luxury apartments", "source": "related", "score": 70},
+        ]
+
+        targets = _page_keyword_targets(keywords, pages, pages[0].url)
+
+        self.assertEqual(targets[pages[1].url][0], "tailgates tours")
+        self.assertNotIn("apartments knoxville", targets[pages[1].url])
+        self.assertNotIn("luxury apartments", targets[pages[1].url])
+
     def test_keyword_targets_vary_by_page_and_preserve_approved_assignments(self):
         pages = [
             SimpleNamespace(
@@ -310,6 +362,127 @@ class InsightRunnerTests(unittest.TestCase):
                 ),
             ):
                 return runner.run(job, directory)
+
+    def test_event_detail_pages_are_fetched_and_keep_copy(self):
+        fetched_urls: list[str] = []
+
+        class EventCopyGenerator(FakeGenerator):
+            def generate_bulk_metadata(
+                self,
+                pages,
+                mode="existing",
+                client_context=None,
+                on_progress=None,
+            ):
+                return [
+                    {
+                        **item,
+                        "proposed_content": "Join the open house this Saturday.",
+                        "current_body_text": page.get("body_text", ""),
+                        "content_action": "new_block",
+                    }
+                    for item, page in zip(
+                        super().generate_bulk_metadata(
+                            pages,
+                            mode=mode,
+                            client_context=client_context,
+                            on_progress=on_progress,
+                        ),
+                        pages,
+                    )
+                ]
+
+        job = AuditJob(
+            id="11111111-1111-4111-8111-111111111111",
+            target_url="https://example.com/",
+            target_city="Knoxville",
+            target_region="Tennessee",
+            page_limit=20,
+            run_performance=False,
+            run_accessibility=False,
+            options={"event_page_treatment": "technical_only"},
+        )
+        runner = InsightRunner(
+            semrush=FakeSemrush(),
+            pagespeed=FakePageSpeed(),
+            generator=EventCopyGenerator(),
+        )
+        with tempfile.TemporaryDirectory() as raw:
+            directory = Path(raw)
+            path = directory / "internal_all.csv"
+            with path.open("w", newline="", encoding="utf-8") as stream:
+                writer = csv.DictWriter(
+                    stream,
+                    fieldnames=[
+                        "Address",
+                        "Status Code",
+                        "Content Type",
+                        "Title 1",
+                        "H1-1",
+                        "Meta Description 1",
+                    ],
+                )
+                writer.writeheader()
+                for url, title in (
+                    ("https://example.com/", "Home"),
+                    ("https://example.com/amenities/", "Amenities"),
+                    ("https://example.com/event/open-house/", "Open House"),
+                    ("https://example.com/events/", "Events"),
+                ):
+                    writer.writerow(
+                        {
+                            "Address": url,
+                            "Status Code": "200",
+                            "Content Type": "text/html",
+                            "Title 1": title,
+                            "H1-1": title,
+                            "Meta Description 1": "",
+                        }
+                    )
+            with (
+                patch(
+                    "modules.site_inventory.validate_public_audit_url",
+                    side_effect=lambda value: value,
+                ),
+                patch(
+                    "modules.site_inventory.fetch_sitemap_urls",
+                    return_value=[
+                        "https://example.com/",
+                        "https://example.com/amenities/",
+                        "https://example.com/event/open-house/",
+                    ],
+                ),
+                patch(
+                    "worker.insights.fetch_body_copy_for_pages",
+                    side_effect=lambda urls, stored_copy=None: (
+                        fetched_urls.extend(urls)
+                        or (
+                            {
+                                url: {
+                                    "url": url,
+                                    "body_text": "Saturday open house in the clubhouse.",
+                                    "body_word_count": 7,
+                                }
+                                for url in urls
+                            },
+                            [],
+                        )
+                    ),
+                ),
+            ):
+                result = runner.run(job, directory)
+
+        self.assertIn("https://example.com/event/open-house/", fetched_urls)
+        self.assertNotIn("https://example.com/events/", fetched_urls)
+        by_url = {item["url"]: item for item in result["content_recommendations"]}
+        self.assertIn("https://example.com/event/open-house/", by_url)
+        self.assertEqual(
+            by_url["https://example.com/event/open-house/"]["proposed_content"],
+            "Join the open house this Saturday.",
+        )
+        self.assertNotIn("https://example.com/events/", by_url)
+        self.assertEqual(result["crawl_coverage"]["event_pages"], 1)
+        self.assertEqual(result["event_page_treatment"], "event_details")
 
     def test_enriches_every_eligible_page_not_just_five(self):
         result = self._run(page_count=12)

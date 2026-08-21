@@ -61,7 +61,6 @@ export function AuditInsights({
     <PropertyContext summary={summary} />
     <CrawlCoverage summary={summary} />
     <SiteInventory summary={summary} />
-    <EventBacklog summary={summary} />
     <SemrushSiteAudit summary={summary} />
     <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={targets} />
     <SearchVisibility summary={summary} />
@@ -116,7 +115,7 @@ function CrawlCoverage({ summary }: { summary: AuditSummary }) {
       <article><span>Screaming Frog</span><strong>{fallback ? "Blocked" : imported ? "Local import" : "Complete"}</strong></article>
       <article><span>Page analysis</span><strong>{fallback ? "Browser fallback" : imported ? "Uploaded exports" : "Screaming Frog"}</strong></article>
       <article><span>Pages analyzed</span><strong>{formatNumber(coverage.pages)}</strong></article>
-      {!!coverage.event_pages && <article><span>Event pages separated</span><strong>{formatNumber(coverage.event_pages)}</strong></article>}
+      {!!coverage.event_pages && <article><span>Event pages included</span><strong>{formatNumber(coverage.event_pages)}</strong></article>}
       <article><span>Semrush issues</span><strong>{summary.semrush_site_audit?.project_id ? "Included" : "Unavailable"}</strong></article>
     </div>
   </section>;
@@ -145,7 +144,6 @@ function SemrushSiteAudit({ summary }: { summary: AuditSummary }) {
   return <section className="card report-section">
     <div className="section-title"><div><h2>Semrush Site Audit</h2><p>{audit.project_name} · latest completed Semrush snapshot scoped to this audit URL.</p></div></div>
     <div className="insight-metrics">
-      <article><span>Site health</span><strong>{formatNumber(audit.site_health)}</strong></article>
       <article><span>Pages crawled</span><strong>{formatNumber(audit.pages_crawled)}</strong></article>
       <article><span>Errors</span><strong>{formatNumber(audit.errors)}</strong></article>
       <article><span>Warnings</span><strong>{formatNumber(audit.warnings)}</strong></article>
@@ -186,21 +184,6 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
     <div className="insight-metrics">
       {metrics.map(([label, value]) => <article key={label}><span>{label}</span><strong>{formatNumber(value)}</strong></article>)}
     </div>
-  </section>;
-}
-
-function EventBacklog({ summary }: { summary: AuditSummary }) {
-  const backlog = summary.event_backlog;
-  if (!backlog?.page_count) return null;
-  const issues = Object.entries(backlog.issue_counts ?? {});
-  return <section className="card report-section">
-    <div className="section-title"><div><h2>Calendar pagination backlog</h2><p>Dated list views and /events/ pagination stay out of scoring and copy. Individual /event/ pages are included in titles, descriptions, keywords, and technical SEO. Add nofollow to pagination and dated calendar links.</p></div></div>
-    <div className="insight-metrics">
-      <article><span>Event pages</span><strong>{formatNumber(backlog.page_count)}</strong></article>
-      <article><span>Technical occurrences</span><strong>{formatNumber(backlog.finding_count)}</strong></article>
-      {Object.entries(backlog.severity_counts ?? {}).map(([severity, count]) => <article key={severity}><span>{humanize(severity)}</span><strong>{formatNumber(count)}</strong></article>)}
-    </div>
-    {issues.length > 0 && <div className="table-wrap"><table><thead><tr><th>Event-page issue</th><th>Occurrences</th></tr></thead><tbody>{issues.map(([issue, count]) => <tr key={issue}><td>{humanize(issue)}</td><td>{formatNumber(count)}</td></tr>)}</tbody></table></div>}
   </section>;
 }
 

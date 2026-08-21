@@ -131,9 +131,8 @@ export function AuditForm() {
           <label>
             Event and past-event pages
             <select name="eventPageTreatment" defaultValue="event_details">
-              <option value="event_details">Improve /event/ pages; nofollow calendar pagination</option>
+              <option value="event_details">Include /event/ pages in errors, titles, and copy</option>
               <option value="full_audit">Include every event and calendar URL</option>
-              <option value="technical_only">Keep all event URLs out of score and copy</option>
             </select>
           </label>
           <details>

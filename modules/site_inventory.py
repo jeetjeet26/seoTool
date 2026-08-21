@@ -274,10 +274,9 @@ def is_event_calendar_page(url: str) -> bool:
 
 
 def events_are_technical_only(target_url: str, options: dict | None = None) -> bool:
-    """True when individual /event/ pages stay out of scoring and copy."""
+    """Event detail pages always stay in scoring, findings, and copy."""
 
-    treatment = str((options or {}).get("event_page_treatment") or "").strip()
-    return treatment == "technical_only"
+    return False
 
 
 def calendar_pages_are_technical_only(
