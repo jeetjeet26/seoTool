@@ -85,6 +85,7 @@ export function AuditInsights({
       recommendations={recommendations}
       currentKey="current_h1"
       proposedKey="proposed_h1"
+      includeUnchanged
     />}
     {recommendations.length > 0 && <OnPageRecommendations recommendations={recommendations} />}
     {altText.length > 0 && <AltTextRecommendations items={altText} />}
@@ -222,22 +223,30 @@ function RecommendationSection({
   recommendations,
   currentKey,
   proposedKey,
+  includeUnchanged = false,
 }: {
   title: string;
   description: string;
   recommendations: ContentRecommendation[];
   currentKey: RecommendationKey;
   proposedKey: RecommendationKey;
+  includeUnchanged?: boolean;
 }) {
   const changed = recommendations.filter((item) => {
     const current = String(item[currentKey] ?? "").trim();
     const proposed = String(item[proposedKey] ?? "").trim();
     return proposed && proposed !== current;
   });
+  const rows = includeUnchanged ? recommendations : changed;
   return <section className="card report-section">
-    <div className="section-title"><div><h2>{title}</h2><p>{changed.length} material changes. Unchanged values are omitted. {description}</p></div></div>
-    {changed.length
-      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th></tr></thead><tbody>{changed.map((item) => <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}</td><td><WordDiff current={String(item[currentKey] ?? "")} proposed={String(item[proposedKey] ?? "")}/></td></tr>)}</tbody></table></div>
+    <div className="section-title"><div><h2>{title}</h2><p>{includeUnchanged ? `${recommendations.length} pages listed. ${changed.length} material changes.` : `${changed.length} material changes. Unchanged values are omitted.`} {description}</p></div></div>
+    {rows.length
+      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th>{includeUnchanged && <th>Status</th>}</tr></thead><tbody>{rows.map((item) => {
+        const current = String(item[currentKey] ?? "");
+        const proposed = String(item[proposedKey] ?? "");
+        const isChanged = proposed.trim() && proposed.trim() !== current.trim();
+        return <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}</td><td><WordDiff current={current} proposed={proposed}/></td>{includeUnchanged && <td>{isChanged ? "Updated" : "Unchanged"}</td>}</tr>;
+      })}</tbody></table></div>
       : <EmptyState text="No recommendations were generated."/>}
   </section>;
 }
