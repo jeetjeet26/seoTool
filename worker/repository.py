@@ -27,6 +27,7 @@ class AuditJob:
     client_name: str = "Client"
     client_intake: dict[str, Any] = field(default_factory=dict)
     approved_keyword_targets: tuple[dict[str, Any], ...] = ()
+    previous_report: dict[str, Any] = field(default_factory=dict)
 
     @property
     def location(self) -> str:
@@ -64,6 +65,16 @@ class WorkerRepository:
                 """,
                 (row["client_id"],),
             ).fetchall()
+            previous = connection.execute(
+                """
+                select id, summary from public.audits
+                where client_id = %s and target_url = %s and id <> %s
+                  and status = 'completed'
+                  and created_at < %s
+                order by created_at desc limit 1
+                """,
+                (row["client_id"], row["target_url"], row["id"], row["created_at"]),
+            ).fetchone()
         return AuditJob(
             id=str(row["id"]),
             client_id=str(row["client_id"]),
@@ -77,6 +88,7 @@ class WorkerRepository:
             options=row.get("options") or {},
             client_intake=(client or {}).get("intake") or {},
             approved_keyword_targets=tuple(targets),
+            previous_report={"audit_id": str(previous["id"]), **(previous["summary"] or {})} if previous else {},
         )
 
     def heartbeat(self, audit_id: str) -> bool:

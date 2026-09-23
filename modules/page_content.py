@@ -55,6 +55,7 @@ VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
 class _VisibleTextParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
+        self.images = []
         self._body_depth = 0
         self._focus_depth = 0
         self._skip_depth = 0
@@ -67,6 +68,8 @@ class _VisibleTextParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
         attributes = {key.lower(): (value or "") for key, value in attrs}
+        if tag == "img" and attributes.get("src"):
+            self.images.append({"url": attributes["src"], "alt": attributes.get("alt", "")})
         if tag == "body":
             self._body_depth += 1
         if tag in {"main", "article"}:
@@ -150,6 +153,7 @@ def extract_visible_copy_from_html(html: str, url: str = "") -> dict[str, str | 
         "body_text": body_text,
         "body_word_count": len(body_text.split()),
         "rewrite_block": rewrite_block,
+        "images": [{**image, "url": urljoin(url, image["url"])} for image in parser.images],
     }
 
 
@@ -244,13 +248,13 @@ def fetch_body_copy_for_pages(
             try:
                 extracted = future.result()
                 if extracted.get("body_text"):
-                    results[url] = extracted
+                    results[url] = {**extracted, "source": "live"}
                     continue
                 raise RuntimeError("empty body")
             except Exception as exc:  # noqa: BLE001
                 stored = stored_copy_for_url(stored_copy, url)
                 if stored:
-                    results[url] = stored
+                    results[url] = {**stored, "source": "stored"}
                     continue
                 detail = exc.__class__.__name__
                 status = getattr(getattr(exc, "response", None), "status_code", None)

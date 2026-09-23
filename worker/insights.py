@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from modules.recommendation_progress import compare_recommendations, preserve_implemented
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
 from modules.google_places import (
@@ -406,6 +407,20 @@ class InsightRunner:
             }
             for page in selected_pages
         ]
+        checks, protected = compare_recommendations(generation_pages, body_copy, job.previous_report)
+        result["recommendation_progress"] = {
+            "previous_audit_id": job.previous_report.get("audit_id"),
+            "items": checks,
+        }
+        completed_alt = {(item["url"], item.get("image_url")) for item in checks
+                         if item["field"] == "alt_text" and item["status"] == "implemented"}
+        prior_alt = {(item.get("page_url"), item.get("image_url")): item
+                     for item in job.previous_report.get("implemented_alt_text") or []}
+        prior_alt.update({(item.get("page_url"), item.get("image_url")): item
+                          for item in job.previous_report.get("alt_text_recommendations") or []})
+        result["implemented_alt_text"] = [item for key, item in prior_alt.items() if key in completed_alt]
+        for page in generation_pages:
+            page["implemented_values"] = protected.get(page["url"], {})
         if generation_pages:
             try:
                 generated_recommendations = [
@@ -434,7 +449,7 @@ class InsightRunner:
                 ]
                 result["content_recommendations"] = _limit_content_recommendations(
                     _guard_excluded_recommendations(
-                        generated_recommendations,
+                        preserve_implemented(generated_recommendations, protected),
                         excluded_terms,
                     ),
                     job.options.get("report_variant", "full_client"),
@@ -445,6 +460,7 @@ class InsightRunner:
         images = [
             image.to_dict()
             for image in inventory.images_missing_alt[:MAX_ALT_TEXT_IMAGES]
+            if (image.page_url, image.image_url) not in completed_alt
         ]
         if images:
             try:

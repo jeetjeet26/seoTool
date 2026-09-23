@@ -52,6 +52,15 @@ def generate_report_exports(
         report_variant=summary.get("report_variant", "full_client"),
         include_supplemental=True,
     )
+    progress = summary.get("recommendation_progress") or {}
+    if progress.get("previous_audit_id"):
+        sheet = workbook.create_sheet("Previous Recommendations")
+        sheet.append(["Page", "Image", "Field", "Status", "Evidence"])
+        for item in progress.get("items", []):
+            # Explicit string cells prevent report text becoming Excel formulas.
+            sheet.append([item.get(key, "") for key in ("url", "image_url", "field", "status", "reason")])
+            for cell in sheet[sheet.max_row]:
+                cell.data_type = "s"
     workbook.save(excel_path)
     return [csv_path, excel_path]
 

@@ -102,19 +102,14 @@ class ContentGenerator:
             if attempt:
                 attempt_prompt += (
                     "\n\nVALIDATION FAILURE TO CORRECT: Every page must have a "
-                    "non-empty proposed title and meta description, and each must "
-                    "differ materially from its current value. Return the complete "
+                    "valid JSON output. Preserve acceptable existing wording. Return the complete "
                     "corrected JSON array."
                 )
             response = self.agent._get_completion(
                 system_prompt, attempt_prompt, max_tokens=6000
             )
             parsed = _parse_json_array(response)
-            if parsed is not None and (
-                mode != "existing"
-                or _all_metadata_rewritten(parsed, chunk)
-                or attempt == 1
-            ):
+            if parsed is not None:
                 break
         if parsed is None:
             return [
@@ -145,6 +140,7 @@ class ContentGenerator:
             lines.append(
                 f"{position + 1}. URL: {page.get('url', '')}\n"
                 f"   Target keywords: {keywords or 'infer from URL'}\n"
+                f"   Previously implemented values (preserve): {json.dumps(page.get('implemented_values', {}))}\n"
                 f"   Current title: {page.get('title') or 'None'}\n"
                 f"   Current meta description: {page.get('meta_description') or 'None'}\n"
                 f"   Current H1: {page.get('h1') or 'None'}\n"
@@ -193,10 +189,13 @@ class ContentGenerator:
             )
         else:
             task = (
-                "These pages belong to a live website. Write a new proposed title "
-                "and a new proposed meta description for every page. Both must "
-                "differ materially from the current value while following the "
-                "approved style guide and assigned keyword. Propose a different H1 "
+                "These pages belong to a live website. Preserve acceptable current titles "
+                "and meta descriptions exactly. Propose a change only for a specific "
+                "remaining issue: missing or duplicated content, inaccurate facts, "
+                "excessive length, or conflict with the assigned keyword or approved style guide. "
+                "Explain the issue in the rationale. Do not rewrite solely for variety. "
+                "Previously implemented values are protected from cosmetic edits. "
+                "Propose a different H1 "
                 "only where the current H1 is missing, duplicated, off-target, or "
                 "violates the approved style guide; otherwise return the current H1. "
                 "Analyze the supplied visible body copy for search intent, topical "
@@ -263,9 +262,11 @@ Return ONLY a JSON array. One object per page with keys:
         rationale = _clean(entry.get("rationale"))
         if content_action == "new_block" and "new" not in rationale.lower():
             rationale = f"New paragraph block: {rationale}".strip()
-        if mode == "existing" and proposed_title == current_title:
-            proposed_title = _distinct_title(current_title, page)
-        proposed_title = _lengthen_title(proposed_title, page)
+        if mode == "existing":
+            proposed_title = proposed_title or current_title
+            proposed_description = proposed_description or _clean(page.get("meta_description"))
+        if mode != "existing" or proposed_title != current_title:
+            proposed_title = _lengthen_title(proposed_title, page)
         result = {
             "url": page.get("url", ""),
             "mode": mode,

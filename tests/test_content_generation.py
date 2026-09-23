@@ -294,7 +294,7 @@ class ContentGenerationTests(unittest.TestCase):
         self.assertGreaterEqual(len(result["proposed_title"]), 50)
         self.assertLessEqual(len(result["proposed_title"]), 60)
 
-    def test_existing_mode_requires_title_and_description_rewrites_for_every_page(self):
+    def test_existing_mode_preserves_acceptable_wording(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent)
         generator.generate_bulk_metadata(
@@ -308,13 +308,13 @@ class ContentGenerationTests(unittest.TestCase):
             ]
         )
         _system, user_prompt = agent.prompts[0]
-        self.assertIn("new proposed title", user_prompt)
-        self.assertIn("new proposed meta description for every page", user_prompt)
+        self.assertIn("Preserve acceptable current titles", user_prompt)
+        self.assertIn("Do not rewrite solely for variety", user_prompt)
         self.assertIn("otherwise return the current H1", user_prompt)
         self.assertIn("change no more than 3-7 words", user_prompt)
         self.assertIn("content_action", user_prompt)
 
-    def test_retries_when_existing_metadata_is_returned_unchanged(self):
+    def test_accepts_unchanged_existing_metadata(self):
         unchanged = json.dumps(
             [
                 {
@@ -350,11 +350,10 @@ class ContentGenerationTests(unittest.TestCase):
                 }
             ]
         )[0]
-        self.assertEqual(result["proposed_title"], "New homes in Dallas - Example")
-        self.assertEqual(len(agent.prompts), 2)
-        self.assertIn("VALIDATION FAILURE", agent.prompts[1][1])
+        self.assertEqual(result["proposed_title"], "Current title")
+        self.assertEqual(len(agent.prompts), 1)
 
-    def test_unchanged_title_gets_a_distinct_p11_fallback(self):
+    def test_unchanged_title_is_not_rewritten_by_fallback(self):
         unchanged = json.dumps(
             [
                 {
@@ -381,7 +380,7 @@ class ContentGenerationTests(unittest.TestCase):
         )[0]
         self.assertEqual(
             result["proposed_title"],
-            "The Terraces at Walnut - Privacy Policy",
+            "Privacy Policy - The Terraces at Walnut",
         )
 
     def test_one_off_returns_single_result(self):
