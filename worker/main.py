@@ -25,6 +25,7 @@ from modules.site_inventory import (
 from modules.models import AuditStage, AuditStatus, ProgressEvent
 from worker.artifacts import ArtifactStore, ToolArtifactStore
 from worker.exports import generate_report_exports
+from worker.report_edits import process_report_edits
 from worker.insights import InsightRunner
 from worker.repository import AuditJob, WorkerRepository
 from worker.settings import WorkerSettings
@@ -378,6 +379,8 @@ def run() -> None:
 
     while not STOP_EVENT.is_set():
         try:
+            if process_report_edits(repository, artifacts, settings.work_root):
+                continue
             job = repository.claim_next_job()
             if job:
                 process_job(job, settings, repository, artifacts)

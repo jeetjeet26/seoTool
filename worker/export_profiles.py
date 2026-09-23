@@ -275,6 +275,7 @@ def build_client_workbook(
     page_experience: list[dict] | None = None,
     recap_lines: list[str] | None = None,
     report_variant: str = "full_client",
+    include_supplemental: bool = False,
 ) -> Workbook:
     """Build the multi-sheet client report workbook.
 
@@ -459,7 +460,7 @@ def build_client_workbook(
                 cell.alignment = Alignment(vertical="top", wrap_text=True)
         sections.append("On Page SEO")
 
-    if alt_text_items and report_variant not in {"full_client", "in_house"}:
+    if alt_text_items and (include_supplemental or report_variant not in {"full_client", "in_house"}):
         alt_sheet = workbook.create_sheet("Alt Text")
         _sheet_title(alt_sheet, property_name, "Image Alt Text Recommendations")
         _table(
@@ -505,7 +506,7 @@ def build_client_workbook(
         )
         sections.append("Technical SEO")
 
-    if page_experience and report_variant not in {"full_client", "in_house"}:
+    if page_experience and (include_supplemental or report_variant not in {"full_client", "in_house"}):
         speed = workbook.create_sheet("Page Speed")
         _sheet_title(speed, property_name, "Page Speed & Accessibility")
         _table(
@@ -522,7 +523,7 @@ def build_client_workbook(
         )
         sections.append("Page Speed")
 
-    if recap_lines and report_variant not in {"full_client", "in_house"}:
+    if recap_lines and (include_supplemental or report_variant not in {"full_client", "in_house"}):
         recap = workbook.create_sheet("Program Recap")
         _sheet_title(recap, property_name, "Program Recap")
         row_index = 5

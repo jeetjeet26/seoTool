@@ -50,6 +50,7 @@ def generate_report_exports(
         page_experience=summary.get("page_experience") or [],
         recap_lines=_recap_lines(summary),
         report_variant=summary.get("report_variant", "full_client"),
+        include_supplemental=True,
     )
     workbook.save(excel_path)
     return [csv_path, excel_path]
@@ -59,23 +60,25 @@ def technical_rows_from_findings(findings: list[Finding]) -> list[dict]:
     """Group findings into the workbook's technical contract: one row per
     issue type with occurrence counts and an example location."""
 
-    counts: Counter[tuple[str, str]] = Counter()
-    examples: dict[tuple[str, str], Finding] = {}
+    counts: Counter[tuple[str, str, str]] = Counter()
+    examples: dict[tuple[str, str, str], Finding] = {}
     for finding in findings:
-        key = (finding.category, finding.issue_type)
+        # Keep individually edited findings distinct in the grouped handoff.
+        edited_key = finding.id if finding.metadata.get("report_chat_edited") else ""
+        key = (finding.category, finding.issue_type, edited_key)
         counts[key] += 1
         examples.setdefault(key, finding)
 
     rows = []
-    for (category, issue_type), count in sorted(
+    for (category, issue_type, edited_key), count in sorted(
         counts.items(), key=lambda entry: (-entry[1], entry[0])
     ):
-        example = examples[(category, issue_type)]
+        example = examples[(category, issue_type, edited_key)]
         rows.append(
             {
                 "category": category,
-                "issue": issue_type.replace("_", " ").title(),
-                "description": example.recommendation
+                "issue": example.metadata.get("report_title") or issue_type.replace("_", " ").title(),
+                "description": example.metadata.get("report_description") or example.recommendation
                 or f"{issue_type.replace('_', ' ').title()} detected during the crawl.",
                 "occurrences": count,
                 "example_url": example.page_url or example.resource_url or "",
@@ -87,6 +90,8 @@ def technical_rows_from_findings(findings: list[Finding]) -> list[dict]:
 
 def _recap_lines(summary: dict[str, Any]) -> list[str]:
     lines = []
+    if summary.get("executive_summary"):
+        lines.append(summary["executive_summary"])
     if summary.get("pages_scanned"):
         lines.append(f"Pages crawled: {summary['pages_scanned']}")
     if summary.get("finding_count") is not None:

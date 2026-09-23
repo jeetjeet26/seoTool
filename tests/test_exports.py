@@ -58,7 +58,8 @@ class ExportTests(unittest.TestCase):
         self.assertIn("Introduction", workbook.sheetnames)
         self.assertIn("Title Tags", workbook.sheetnames)
         self.assertIn("Technical SEO", workbook.sheetnames)
-        self.assertNotIn("Page Speed", workbook.sheetnames)
+        self.assertIn("Page Speed", workbook.sheetnames)
+        self.assertIn("Program Recap", workbook.sheetnames)
         self.assertNotIn("Glossary", workbook.sheetnames)
         # Proposed title lands in the Title Tags sheet.
         titles = workbook["Title Tags"]
