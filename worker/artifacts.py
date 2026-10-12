@@ -132,7 +132,7 @@ class ArtifactStore:
         written: list[Path] = []
         total_bytes = 0
         for object_path in object_paths[:50]:
-            if not object_path.startswith(f"{audit_id}/crawl-import/"):
+            if not object_path.startswith((f"{audit_id}/crawl-import/", f"{audit_id}/crawl-export/")):
                 raise ArtifactUploadError("Invalid crawl import path")
             content = self.storage.get_object(self.BUCKET, object_path)
             total_bytes += len(content)

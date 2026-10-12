@@ -46,6 +46,17 @@ class CrawlImportTests(unittest.TestCase):
             self.assertFalse((Path(directory).parent / "ignored.txt").exists())
         self.assertEqual(len(written), 2)
 
+    def test_reprocesses_own_exports_but_rejects_other_audits(self):
+        audit_id = "11111111-1111-4111-8111-111111111111"
+        path = f"{audit_id}/crawl-export/internal_all.csv"
+        store = ArtifactStore.__new__(ArtifactStore)
+        store.storage = FakeStorage({path: b"Address,Status Code,Content Type\nhttps://example.com/,200,text/html\n"})
+        with tempfile.TemporaryDirectory() as directory:
+            store.download_crawl_imports(audit_id, [path], Path(directory))
+            self.assertTrue((Path(directory) / "internal_all.csv").is_file())
+            with self.assertRaisesRegex(ArtifactUploadError, "Invalid crawl import path"):
+                store.download_crawl_imports("other-audit", [path], Path(directory))
+
     def test_requires_internal_all_export(self):
         archive_stream = io.BytesIO()
         with zipfile.ZipFile(archive_stream, "w") as archive:
