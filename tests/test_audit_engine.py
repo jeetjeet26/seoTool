@@ -51,6 +51,18 @@ class CrawlerTests(unittest.TestCase):
         self.assertIn("Meta Description:Over X Characters", exports)
         self.assertNotIn("Images:Over 100 KB", exports)
 
+    def test_explicit_scope_is_seeded_in_list_mode(self):
+        urls = ["https://example.com/community", "https://example.com/properties/unit"]
+        def run(command, **kwargs):
+            self.assertNotIn("--crawl", command)
+            path = Path(command[command.index("--crawl-list") + 1])
+            self.assertEqual(path.read_text().splitlines(), urls)
+            output = command[command.index("--output-folder") + 1]
+            write_csv(Path(output) / "internal_all.csv", [{"Address": urls[0]}])
+            return subprocess.CompletedProcess(command, 0, "Finished", "")
+        with tempfile.TemporaryDirectory() as directory, patch("modules.crawler.validate_public_audit_url", side_effect=lambda u: u), patch("modules.crawler.subprocess.run", side_effect=run):
+            Crawler().run_crawl(urls[0], str(Path(directory) / "crawl"), allowed_urls=urls)
+
     def test_exit_zero_with_fatal_output_raises_custom_error(self):
         crawler = Crawler()
         with tempfile.TemporaryDirectory() as output:

@@ -3,6 +3,8 @@ import os
 import sys
 import re
 from urllib.parse import urlparse
+from pathlib import Path
+from modules.url_safety import validate_public_audit_url
 from config import Config
 
 
@@ -25,7 +27,7 @@ class Crawler:
     def __init__(self):
         self.sf_path = Config.SCREAMING_FROG_PATH
 
-    def run_crawl(self, url: str, output_dir: str):
+    def run_crawl(self, url: str, output_dir: str, allowed_urls=None):
         """
         Executes Screaming Frog in headless mode to crawl the given URL.
         Generates CSV reports in the specified output directory.
@@ -54,9 +56,18 @@ class Crawler:
 
         # Construct the command
         # Note: Enclose paths in quotes if they contain spaces (handled by subprocess list args usually, but be careful)
+        crawl_args = ["--crawl", url]
+        if allowed_urls is not None:
+            urls = list(dict.fromkeys(validate_public_audit_url(item) for item in allowed_urls))
+            if not urls:
+                raise ValueError("The explicit crawl scope must contain at least one URL")
+            list_path = Path(output_dir).parent / (Path(output_dir).name + "-urls.txt")
+            list_path.write_text("\n".join(urls) + "\n", encoding="utf-8")
+            crawl_args = ["--crawl-list", str(list_path)]
+
         cmd = [
             self.sf_path,
-            "--crawl", url,
+            *crawl_args,
             "--headless",
             "--save-crawl",
             "--output-folder", output_dir,

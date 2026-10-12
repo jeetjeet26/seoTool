@@ -317,7 +317,7 @@ class AuditService:
 
             stage = AuditStage.CRAWL
             self._emit(callback, audit_id, stage, AuditStatus.RUNNING, 15, "Crawl started")
-            self.crawler.run_crawl(url, str(crawl_dir))
+            self.crawler.run_crawl(url, str(crawl_dir), **({"allowed_urls": list(allowed_urls)[:page_limit] if page_limit else list(allowed_urls)} if allowed_urls is not None else {}))
             self._emit(callback, audit_id, stage, AuditStatus.COMPLETED, 65, "Crawl completed")
 
             stage = AuditStage.NORMALIZATION
