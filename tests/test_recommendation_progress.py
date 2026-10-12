@@ -39,6 +39,11 @@ class RecommendationProgressTests(unittest.TestCase):
         self.assertEqual(checks[0]["status"], "not_implemented")
         self.assertNotIn("title", protected[self.url])
 
+    def test_different_improvement_is_distinguished_from_unchanged_work(self):
+        checks, _ = compare_recommendations([{**self.page, "title": "A different improved title"}], {}, self.prior)
+        self.assertIn("Changed since the previous audit", checks[0]["reason"])
+        self.assertEqual(checks[0]["status"], "not_implemented")
+
     def test_changed_keywords_or_duplicates_allow_specific_review(self):
         for pages in ([{**self.page, "keywords": ["different target"]}], [self.page, {**self.page, "url": "https://example.com/other/"}]):
             checks, protected = compare_recommendations(pages, {}, self.prior)

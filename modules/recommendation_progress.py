@@ -51,6 +51,8 @@ def compare_recommendations(pages, body_copy, previous):
                 verified = False
             status = "implemented" if verified and match else "not_implemented" if verified else "not_verified"
             reason = "Matches the previous recommendation." if status == "implemented" else "Current content differs from the previous recommendation." if verified else "Fresh page evidence was unavailable."
+            if status == "not_implemented" and old and value != old:
+                reason = "Changed since the previous audit, but does not exactly match its recommendation. Review the current wording before treating this as unfinished work."
             if status == "implemented":
                 issues = []
                 if field != "content" and counts[field][value] > 1:
