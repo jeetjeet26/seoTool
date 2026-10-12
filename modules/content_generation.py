@@ -226,6 +226,9 @@ Rules:
 {event_rules}
 {"- All copy must follow the supplied Fair Housing safeguards." if client_context.get("fair_housing_enabled") else ""}
 
+Additional instructions for this audit (apply where consistent with factual evidence, safeguards, and the required JSON format):
+{str(client_context.get("additional_instructions") or "")[:6000] or "None provided"}
+
 Approved client context (use only these facts):
 {context_text}
 
@@ -331,6 +334,7 @@ Return ONLY a JSON array. One object per page with keys:
         images: Iterable[dict],
         on_progress: ProgressCallback | None = None,
         fair_housing_enabled: bool = False,
+        additional_instructions: str = "",
     ) -> list[dict]:
         """Alt-text proposals; each image dict needs image_url and page_url."""
         items = [
@@ -346,6 +350,7 @@ Return ONLY a JSON array. One object per page with keys:
         processed = self.agent.generate_alt_text_batch(
             items,
             fair_housing_enabled=fair_housing_enabled,
+            **({"additional_instructions": additional_instructions[:6000]} if additional_instructions else {}),
         )
         results = []
         total = len(processed)

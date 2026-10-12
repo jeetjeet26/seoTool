@@ -41,6 +41,27 @@ class FakeAgent:
 
 
 class ContentGenerationTests(unittest.TestCase):
+    def test_audit_instructions_reach_every_chunk_without_leaking_to_next_run(self):
+        agent = FakeAgent()
+        generator = ContentGenerator(agent=agent, chunk_size=1)
+        pages = [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]
+        generator.generate_bulk_metadata(pages, client_context={"additional_instructions": "Focus on renovated homes."})
+        self.assertTrue(all("Focus on renovated homes." in prompt for _, prompt in agent.prompts))
+        generator.generate_bulk_metadata(pages[:1])
+        self.assertNotIn("Focus on renovated homes.", agent.prompts[-1][1])
+
+    def test_alt_instructions_reach_model(self):
+        from modules.agent import SEOAgent
+        from unittest.mock import patch
+        agent = SEOAgent()
+        with patch.object(agent, "_get_completion", return_value='[{"index": 1, "alt_text": "Renovated kitchen"}]') as complete:
+            result = ContentGenerator(agent=agent).generate_alt_text(
+                [{"image_url": "https://example.com/kitchen.jpg", "page_url": "https://example.com/"}],
+                additional_instructions="Use concise descriptions.",
+            )
+        self.assertIn("Use concise descriptions.", complete.call_args.args[1])
+        self.assertEqual(result[0]["proposed_alt_text"], "Renovated kitchen")
+
     def test_chunked_generation_covers_all_pages(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent, chunk_size=2)

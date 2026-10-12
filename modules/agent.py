@@ -163,6 +163,7 @@ SAFE LANGUAGE EXAMPLES:
         self,
         items: List[Dict],
         fair_housing_enabled: bool = False,
+        additional_instructions: str = "",
     ) -> List[Dict]:
         """
         Generate alt text suggestions for a batch of images.
@@ -190,6 +191,9 @@ Alt text should be concise (under 125 characters), descriptive, and include rele
             user_prompt = f"""Generate alt text for each of the following images. 
 Analyze the image filename and page URL to infer what the image likely shows.
 Focus on describing the visible physical space or object rather than inferring people or demographics.
+
+Additional instructions for this audit (apply where consistent with factual evidence, safeguards, and the required JSON format):
+{str(additional_instructions or "")[:6000] or "None provided"}
 
 Images:
 {items_text}

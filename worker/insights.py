@@ -429,6 +429,7 @@ class InsightRunner:
                         generation_pages,
                         mode="existing",
                         client_context={
+                            "additional_instructions": str(job.options.get("additional_instructions") or "")[:6000],
                             "name": property_name,
                             "location": " / ".join(
                                 [job.location, *secondary_locations]
@@ -466,6 +467,7 @@ class InsightRunner:
             try:
                 result["alt_text_recommendations"] = self.generator.generate_alt_text(
                     images,
+                    **({"additional_instructions": str(job.options["additional_instructions"])[:6000]} if job.options.get("additional_instructions") else {}),
                     fair_housing_enabled=bool(
                         intake.get("fair_housing_enabled", False)
                     ),

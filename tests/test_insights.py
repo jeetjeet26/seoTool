@@ -363,6 +363,12 @@ class InsightRunnerTests(unittest.TestCase):
             ):
                 return runner.run(job, directory)
 
+    def test_job_instructions_pass_to_both_generators(self):
+        with patch.object(FakeGenerator, "generate_bulk_metadata", return_value=[]) as metadata, patch.object(FakeGenerator, "generate_alt_text", return_value=[]) as alt:
+            self._run(1, options={"additional_instructions": "Use our updated property name."})
+        self.assertEqual(metadata.call_args.kwargs["client_context"]["additional_instructions"], "Use our updated property name.")
+        self.assertEqual(alt.call_args.kwargs["additional_instructions"], "Use our updated property name.")
+
     def test_event_detail_pages_are_fetched_and_keep_copy(self):
         fetched_urls: list[str] = []
 
