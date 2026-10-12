@@ -449,6 +449,12 @@ class InsightRunner:
                         },
                     )
                 ]
+                failed_pages = sum(bool(item.get("error")) for item in generated_recommendations)
+                if failed_pages:
+                    result["enrichment_errors"].append({
+                        "service": "content_generation",
+                        "message": f"AI copy generation failed for {failed_pages} pages; unchanged fallback values are not new recommendations.",
+                    })
                 result["content_recommendations"] = _limit_content_recommendations(
                     _guard_excluded_recommendations(
                         preserve_implemented(generated_recommendations, protected),

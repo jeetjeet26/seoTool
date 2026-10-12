@@ -44,7 +44,6 @@ SAFE LANGUAGE EXAMPLES:
             message = self.client.messages.create(
                 model=self.model,
                 max_tokens=max_tokens,
-                temperature=0.7,
                 system=system_prompt,
                 messages=[
                     {"role": "user", "content": user_prompt}

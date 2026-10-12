@@ -41,6 +41,17 @@ class FakeAgent:
 
 
 class ContentGenerationTests(unittest.TestCase):
+    def test_completion_supports_client_without_temperature_argument(self):
+        from types import SimpleNamespace
+        from modules.agent import SEOAgent
+        class Messages:
+            def create(self, *, model, max_tokens, system, messages):
+                return SimpleNamespace(content=[SimpleNamespace(text="valid completion")])
+        agent = SEOAgent.__new__(SEOAgent)
+        agent.model = "test-model"
+        agent.client = SimpleNamespace(messages=Messages())
+        self.assertEqual(agent._get_completion("system", "prompt"), "valid completion")
+
     def test_audit_instructions_reach_every_chunk_without_leaking_to_next_run(self):
         agent = FakeAgent()
         generator = ContentGenerator(agent=agent, chunk_size=1)
