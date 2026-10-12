@@ -15,6 +15,19 @@ class RecommendationProgressTests(unittest.TestCase):
         self.assertEqual(output["proposed_title"], "Approved title")
         self.assertEqual(output["proposed_h1"], "Approved heading")
 
+    def test_unverified_prior_pages_are_retained_in_later_comparisons(self):
+        previous = {"recommendation_baseline": self.prior["content_recommendations"], "content_recommendations": []}
+        checks, _ = compare_recommendations([self.page], {}, previous)
+        self.assertTrue(checks)
+        self.assertTrue(all(c["status"] == "implemented" for c in checks))
+
+    def test_latest_chat_edits_override_carried_baseline(self):
+        previous = {"recommendation_baseline": self.prior["content_recommendations"],
+                    "content_recommendations": [{"url": self.url, "proposed_title": "New user edit"}]}
+        checks, _ = compare_recommendations([self.page], {}, previous)
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["status"], "not_implemented")
+
     def test_missing_pages_are_not_completed(self):
         checks, protected = compare_recommendations([], {}, self.prior)
         self.assertTrue(all(c["status"] == "not_verified" for c in checks))

@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from modules.recommendation_progress import compare_recommendations, preserve_implemented
+from modules.recommendation_progress import compare_recommendations, preserve_implemented, recommendation_baseline, url_key
 from modules.agent import SEOAgent
 from modules.content_generation import ContentGenerator
 from modules.google_places import (
@@ -94,6 +94,7 @@ class InsightRunner:
                 job.target_url,
                 crawl_dir,
                 job.page_limit,
+                **({"allowed_urls": allowed_urls} if allowed_urls is not None else {}),
             )
             inventory = build_site_inventory(
                 crawl_dir,
@@ -457,6 +458,12 @@ class InsightRunner:
                 )
             except Exception as exc:  # noqa: BLE001
                 result["enrichment_errors"].append(_safe_error("anthropic", exc))
+
+        # Retain recommendations for pages not verified in this crawl so a
+        # temporary outage or smaller scope does not erase the next baseline.
+        baseline = {url_key(item.get("url")): item for item in recommendation_baseline(job.previous_report)}
+        baseline.update({url_key(item.get("url")): item for item in result["content_recommendations"]})
+        result["recommendation_baseline"] = list(baseline.values())
 
         images = [
             image.to_dict()

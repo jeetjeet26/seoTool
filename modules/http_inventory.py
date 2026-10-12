@@ -96,6 +96,7 @@ def build_http_inventory(
     target_url: str,
     crawl_dir: Path,
     page_limit: int,
+    allowed_urls: list[str] | None = None,
 ) -> dict:
     """Write a compatible internal_all.csv using safe browser-style requests."""
     safe_target = validate_public_audit_url(target_url)
@@ -103,7 +104,8 @@ def build_http_inventory(
         sitemap_urls = fetch_sitemap_urls(safe_target, max_urls=page_limit * 5)
     except RuntimeError:
         sitemap_urls = []
-    candidates = _scoped_candidates(safe_target, sitemap_urls, page_limit)
+    candidates = (list(dict.fromkeys([safe_target, *allowed_urls]))[:max(1, page_limit)]
+                  if allowed_urls is not None else _scoped_candidates(safe_target, sitemap_urls, page_limit))
     rows = []
     errors = []
     with ThreadPoolExecutor(max_workers=6) as executor:

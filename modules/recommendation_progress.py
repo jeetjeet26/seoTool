@@ -14,6 +14,12 @@ def url_key(value):
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/") or "/", parts.query, ""))
 
 
+def recommendation_baseline(previous):
+    rows = {url_key(item.get("url")): item for item in previous.get("recommendation_baseline") or []}
+    rows.update({url_key(item.get("url")): item for item in previous.get("content_recommendations") or []})
+    return list(rows.values())
+
+
 def compare_recommendations(pages, body_copy, previous):
     """Return status rows plus fields protected from cosmetic regeneration.
 
@@ -24,7 +30,7 @@ def compare_recommendations(pages, body_copy, previous):
     counts = {field: Counter(text(p.get(field)) for p in pages if text(p.get(field)))
               for field in ("title", "meta_description", "h1")}
     checks, protected = [], {}
-    for prior in previous.get("content_recommendations") or []:
+    for prior in recommendation_baseline(previous):
         url = prior.get("url", "")
         page = current.get(url_key(url))
         for field in ("title", "meta_description", "h1", "content"):

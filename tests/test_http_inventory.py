@@ -12,6 +12,13 @@ from modules.http_inventory import (
 
 
 class HttpInventoryTests(unittest.TestCase):
+    def test_explicit_scope_includes_prior_unit_pages_outside_community_path(self):
+        target = "https://example.com/communities/test"
+        unit = "https://example.com/properties/unit"
+        with tempfile.TemporaryDirectory() as raw, patch("modules.http_inventory.validate_public_audit_url", side_effect=lambda u:u), patch("modules.http_inventory.fetch_sitemap_urls", return_value=[]), patch("modules.http_inventory._fetch_page", return_value=None) as fetch:
+            build_http_inventory(target, Path(raw), 10, allowed_urls=[target, unit])
+        self.assertEqual({c.args[0] for c in fetch.call_args_list}, {target, unit})
+
     def test_scopes_sitemap_to_requested_property_path(self):
         urls = _scoped_candidates(
             "https://example.com/communities/persimmon/",
