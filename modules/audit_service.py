@@ -825,7 +825,7 @@ class AuditService:
         if kind in {"link", "image"}:
             return source or address, address
         if kind == "redirect":
-            return address, row.get("redirect_uri", "") or row.get("destination", "")
+            return address, row.get("redirect_url", "") or row.get("redirect_uri", "") or row.get("destination", "")
         return address or source, ""
 
     @staticmethod
@@ -834,6 +834,15 @@ class AuditService:
             "status_code",
             "status",
             "redirect_uri",
+            "redirect_url",
+            "title_1",
+            "title_1_length",
+            "meta_description_1",
+            "meta_description_1_length",
+            "canonical_link_element_1",
+            "indexability",
+            "indexability_status",
+            "inlinks",
             "h1_1",
             "h1_2",
             "h1_count",

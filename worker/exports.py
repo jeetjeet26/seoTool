@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from modules.models import Finding
+from modules.technical_findings import enrich_technical_findings, coverage_rows, PLAYBOOKS
 from worker.export_profiles import (
     build_client_workbook,
     internal_findings_csv,
@@ -23,7 +24,7 @@ def generate_report_exports(
     summary: dict[str, Any],
     output_dir: Path,
 ) -> list[Path]:
-    rows = list(findings)
+    rows = enrich_technical_findings(list(findings), summary)
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -51,6 +52,8 @@ def generate_report_exports(
         recap_lines=_recap_lines(summary),
         report_variant=summary.get("report_variant", "full_client"),
         include_supplemental=True,
+        technical_evidence=technical_evidence_rows(rows),
+        technical_coverage=coverage_rows(summary),
     )
     progress = summary.get("recommendation_progress") or {}
     if progress.get("previous_audit_id"):
@@ -79,8 +82,9 @@ def technical_rows_from_findings(findings: list[Finding]) -> list[dict]:
         examples.setdefault(key, finding)
 
     rows = []
+    severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
     for (category, issue_type, edited_key), count in sorted(
-        counts.items(), key=lambda entry: (-entry[1], entry[0])
+        counts.items(), key=lambda entry: (severity_rank.get(examples[entry[0]].severity.value, 4), -entry[1], entry[0])
     ):
         example = examples[(category, issue_type, edited_key)]
         rows.append(
@@ -92,8 +96,37 @@ def technical_rows_from_findings(findings: list[Finding]) -> list[dict]:
                 "occurrences": count,
                 "example_url": example.page_url or example.resource_url or "",
                 "recommendation": example.recommendation,
+                "severity": example.severity.value,
+                "pattern": (example.metadata.get("technical") or {}).get("pattern", ""),
             }
         )
+        if not edited_key and example.metadata.get("technical"):
+            technical = example.metadata["technical"]
+            rows[-1]["description"] = technical["impact"] + " Full per-URL observations are in Technical Evidence."
+            if issue_type in PLAYBOOKS:
+                _, steps, acceptance, owner = PLAYBOOKS[issue_type]
+                rows[-1]["recommendation"] = f"Owner: {owner}\nImplementation: {steps}\nValidation: {acceptance}"
+            rows[-1]["pattern"] = f"{count} recorded occurrences. " + technical["pattern"]
+    return rows
+
+
+def technical_evidence_rows(findings):
+    """Keep every affected URL and all evidence, splitting large cells losslessly."""
+    rows = []
+    for finding in findings:
+        values = [
+            ("Observed evidence (JSON)", finding.evidence),
+            ("Resource / redirect next hop", finding.resource_url),
+            ("Observation and impact", finding.metadata.get("report_description", "")),
+            ("Implementation and validation", finding.recommendation),
+        ]
+        for field, value in values:
+            if not value:
+                continue
+            chunks = [str(value)[i:i + 1000] for i in range(0, len(str(value)), 1000)]
+            for n, chunk in enumerate(chunks, 1):
+                rows.append([finding.id, finding.metadata.get("report_title") or finding.issue_type,
+                             finding.page_url, f"{field} ({n}/{len(chunks)})", chunk, finding.source_file])
     return rows
 
 

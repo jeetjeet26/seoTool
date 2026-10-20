@@ -499,6 +499,7 @@ class InsightRunner:
                     if not job.run_performance:
                         page_result.pop("performance_score", None)
                         page_result.pop("metrics", None)
+                        page_result.pop("performance_issues", None)
                     if not job.run_accessibility:
                         page_result.pop("accessibility_score", None)
                         page_result.pop("accessibility_issues", None)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from modules.technical_findings import enrich_technical_findings, lighthouse_findings
+
 import sys
 
 print("worker.main: module loading", file=sys.stderr, flush=True)
@@ -244,6 +246,11 @@ def process_job(
                         )
                     },
                 )
+            )
+            combined_findings = enrich_technical_findings(
+                [*combined_findings, *lighthouse_findings(insight_data.get("page_experience") or [])],
+                insight_data,
+                job_dir / "crawl",
             )
             finding_count = repository.upsert_findings(job.id, combined_findings)
             repository.record_progress(
