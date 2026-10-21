@@ -116,8 +116,13 @@ export interface AuditSummary {
     project_id?: number;
     project_name?: string;
     domain?: string;
+    project_scope?: "portfolio" | "community";
+    scope_url?: string;
+    scope_description?: string;
+    snapshot_finished_at?: string;
     pages_crawled?: number;
     scoped_pages?: number;
+    issue_types?: number;
     site_health?: number;
     errors?: number;
     warnings?: number;

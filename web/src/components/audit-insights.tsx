@@ -149,13 +149,20 @@ function PropertyContext({ summary }: { summary: AuditSummary }) {
 function SemrushSiteAudit({ summary }: { summary: AuditSummary }) {
   const audit = summary.semrush_site_audit;
   if (!audit?.project_id) return null;
+  const scopeUrl = audit.scope_url || summary.target_url;
+  const snapshotDate = audit.snapshot_finished_at ? new Date(audit.snapshot_finished_at) : null;
+  const completedDate = snapshotDate && !Number.isNaN(snapshotDate.getTime())
+    ? new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(snapshotDate)
+    : "";
   return <section className="card report-section">
-    <div className="section-title"><div><h2>Semrush Site Audit</h2><p>{audit.project_name} · latest completed Semrush snapshot scoped to this audit URL.</p></div></div>
+    <div className="section-title"><div><h2>Semrush Site Audit</h2><p>{audit.project_name || audit.domain || `Project ${audit.project_id}`} · Completed snapshot{completedDate ? `: ${completedDate}` : ""}.</p>{audit.scope_description && <p>{audit.scope_description}</p>}{scopeUrl && <p>Report scope: <ReportLink url={scopeUrl}/></p>}</div></div>
     <div className="insight-metrics">
-      <article><span>Pages crawled</span><strong>{formatNumber(audit.pages_crawled)}</strong></article>
-      <article><span>Errors</span><strong>{formatNumber(audit.errors)}</strong></article>
-      <article><span>Warnings</span><strong>{formatNumber(audit.warnings)}</strong></article>
-      <article><span>Notices</span><strong>{formatNumber(audit.notices)}</strong></article>
+      <article><span>{audit.project_scope === "portfolio" ? "Portfolio pages crawled" : "Project pages crawled"}</span><strong>{formatNumber(audit.pages_crawled)}</strong></article>
+      {audit.scoped_pages !== undefined && <article><span>Affected pages in report scope</span><strong>{formatNumber(audit.scoped_pages)}</strong></article>}
+      <article><span>Errors in report scope</span><strong>{formatNumber(audit.errors)}</strong></article>
+      <article><span>Warnings in report scope</span><strong>{formatNumber(audit.warnings)}</strong></article>
+      <article><span>Notices in report scope</span><strong>{formatNumber(audit.notices)}</strong></article>
+      {audit.issue_types !== undefined && <article><span>Issue types in report scope</span><strong>{formatNumber(audit.issue_types)}</strong></article>}
     </div>
   </section>;
 }
