@@ -29,6 +29,30 @@ def write_csv(path, rows):
 
 
 class CrawlerTests(unittest.TestCase):
+    def test_fallback_inventory_ignores_stale_blocked_exports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            urls = ["https://example.com/community/a", "https://example.com/community/b"]
+            write_csv(root / "internal_all.csv", [
+                {"Address": url, "Status Code": "200", "Content Type": "text/html",
+                 "Title 1": "Same title", "Meta Description 1": "", "H1-1": ""}
+                for url in [*urls, "https://example.com/another-community"]
+            ])
+            write_csv(root / "meta_description_missing.csv", [])
+            write_csv(root / "h1_missing.csv", [])
+            write_csv(root / "page_titles_duplicate.csv", [])
+            write_csv(root / "response_codes_client_error_(4xx).csv", [
+                {"Address": urls[0], "Status Code": "403"}
+            ])
+            findings = AuditService().normalize_findings(
+                root, allowed_urls=urls, inventory_only=True,
+            )
+        self.assertEqual({finding.page_url for finding in findings}, set(urls))
+        self.assertEqual({finding.issue_type for finding in findings}, {
+            "missing_meta_description", "missing_h1", "duplicate_title",
+        })
+        self.assertEqual(len(findings), 6)
+
     def test_uses_supported_configurable_threshold_filter_names(self):
         crawler = Crawler()
         captured = {}

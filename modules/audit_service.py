@@ -460,12 +460,21 @@ class AuditService:
         crawl_dir,
         page_limit: int | None = None,
         allowed_urls: Sequence[str] | None = None,
+        inventory_only: bool = False,
     ) -> List[Finding]:
         directory = Path(crawl_dir)
         if not directory.is_dir():
             raise AuditInputError(f"crawl directory does not exist: {directory}")
 
         files = self._index_csv_files(directory)
+        if inventory_only:
+            # A browser fallback replaces internal_all.csv, but the directory
+            # may still contain empty filters or 403s from the blocked crawl.
+            # Those exports cannot describe the replacement inventory.
+            files = {
+                key: path for key, path in files.items()
+                if key == self._filename_key("internal_all")
+            }
         findings: List[Finding] = []
         covered_issue_types: set[str] = set()
         for export in self._EXPORTS:

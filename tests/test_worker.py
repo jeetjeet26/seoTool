@@ -1,10 +1,12 @@
 import tempfile
+import csv
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from modules.models import AuditResult, AuditStatus, Finding, Severity
+from modules.audit_service import AuditService
 from worker.main import (
     _inventory_normalization_gaps,
     process_job,
@@ -87,6 +89,29 @@ class FakeInsights:
 
 
 class WorkerProcessingTests(unittest.TestCase):
+    def test_fallback_findings_are_rebuilt_from_replacement_inventory(self):
+        class FallbackService(FakeAuditService):
+            def normalize_findings(self, *args, **kwargs):
+                return AuditService().normalize_findings(*args, **kwargs)
+
+        class FallbackInsights(FakeInsights):
+            def run(self, job, crawl_dir, allowed_urls=None):
+                with (crawl_dir / "internal_all.csv").open("w", newline="") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=["Address", "Status Code", "Content Type", "Title 1", "H1-1"])
+                    writer.writeheader()
+                    writer.writerow({"Address": job.target_url, "Status Code": "200", "Content Type": "text/html", "Title 1": "A home", "H1-1": ""})
+                return {**super().run(job, crawl_dir), "crawl_coverage": {"mode": "browser_http_fallback"}, "site_inventory": {"page_count": 1, "missing_h1_count": 1}}
+
+        repository = FakeRepository()
+        job = AuditJob(id="11111111-1111-4111-8111-111111111111", target_url="https://example.com/", target_city="City", target_region=None, page_limit=10, run_performance=False, run_accessibility=False, options={})
+        with tempfile.TemporaryDirectory() as root, patch("worker.main.AuditService", FallbackService):
+            process_job(job, SimpleNamespace(work_root=Path(root)), repository, FakeArtifacts(), insights=FallbackInsights())
+        self.assertIsNone(repository.failed)
+        summary = repository.completed[1]
+        self.assertEqual(summary["finding_count"], 1)
+        self.assertEqual(summary["normalization_status"], "complete")
+        self.assertEqual(summary["enrichment_errors"], [])
+
     def test_inventory_evidence_without_findings_blocks_scoring(self):
         gaps = _inventory_normalization_gaps(
             {

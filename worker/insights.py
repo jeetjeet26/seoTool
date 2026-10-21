@@ -115,7 +115,7 @@ class InsightRunner:
                     "message": (
                         "Screaming Frog was blocked by the target site. "
                         f"Browser-style fallback analyzed {len(inventory.pages)} pages; "
-                        "Semrush supplies technical issue evidence."
+                        "technical findings are limited to the available HTML evidence."
                     ),
                 }
             )
