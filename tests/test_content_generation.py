@@ -41,6 +41,17 @@ class FakeAgent:
 
 
 class ContentGenerationTests(unittest.TestCase):
+    def test_active_adult_ownership_context_reaches_generation(self):
+        agent = FakeAgent()
+        ContentGenerator(agent=agent).generate_bulk_metadata(
+            [{"url": "https://example.com/"}],
+            client_context={"vertical": "active_adult_homeownership"},
+        )
+        prompt = agent.prompts[0][1]
+        self.assertIn("Client-confirmed 55+ active adult homeownership", prompt)
+        self.assertIn("new homes for sale", prompt)
+        self.assertIn("Do not describe rental apartments", prompt)
+
     def test_failed_multi_page_chunk_recovers_with_smaller_groups(self):
         agent = FakeAgent(responses=["truncated JSON", "truncated JSON"])
         results = ContentGenerator(agent=agent, chunk_size=2).generate_bulk_metadata(

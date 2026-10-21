@@ -58,6 +58,7 @@ export function AuditForm({ initial }: { initial?: { clientId: string; name: str
               <option value="multifamily">Multifamily</option>
               <option value="senior_living">Senior Living</option>
               <option value="new_homes">New Homes</option>
+              <option value="active_adult_homeownership">55+ Active Adult Homeownership</option>
               <option value="master_planned">Master Planned Communities</option>
               <option value="luxury_living">Luxury Living</option>
             </select>
@@ -159,6 +160,7 @@ const COMMUNITY_TYPE_DESCRIPTIONS: Record<string, string> = {
   multifamily: "Drive demand and lease-ups for modern multifamily communities.",
   senior_living: "Build trust-first messaging that resonates with residents and families.",
   new_homes: "Launch new communities with clarity, momentum, and buyer confidence.",
+  active_adult_homeownership: "Research 55+ and active adult communities for homebuyers, with ownership-focused keywords and copy.",
   master_planned: "Master planned communities aren't a single campaign - they're a story in motion.",
   luxury_living: "Position elevated communities with refined, experience-led messaging.",
 };

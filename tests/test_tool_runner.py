@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from worker.tool_repository import ToolRunItem, ToolRunJob
-from worker.tools import ToolRunner, approved_metadata_by_url
+from worker.tools import ToolRunner, approved_metadata_by_url, _generation_context
 
 
 class FakeToolRepository:
@@ -132,6 +132,21 @@ def make_runner(repository, artifacts=None):
 
 
 class ToolRunnerTests(unittest.TestCase):
+    def test_keyword_tool_uses_active_adult_ownership_from_intake(self):
+        repository = FakeToolRepository(client={
+            "name": "Example Community",
+            "intake": {"vertical": "active_adult_homeownership"},
+        })
+        with patch("worker.tools.fetch_sitemap_urls", return_value=["https://example.com/"]):
+            make_runner(repository).process(make_run("keyword_research", {
+                "target_url": "https://example.com/", "location": "Dallas",
+            }))
+        self.assertIsNone(repository.failed)
+        keywords = [item.output["keyword"] for item in repository.items]
+        self.assertIn("55+ communities dallas", keywords)
+        self.assertFalse(any("apartments" in keyword for keyword in keywords))
+        self.assertEqual(_generation_context(repository.client)["vertical"], "active_adult_homeownership")
+
     def test_keyword_research_produces_scored_items(self):
         repository = FakeToolRepository()
         runner = make_runner(repository)

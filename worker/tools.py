@@ -91,6 +91,7 @@ class ToolRunner:
             options.get("community_type")
             or options.get("vertical")
             or client.get("vertical")
+            or (client.get("intake") or {}).get("vertical")
             or "multifamily"
         )
         if vertical == "senior_housing":
@@ -445,6 +446,7 @@ def _generation_context(client: dict) -> dict:
     intake = client.get("intake") or {}
     return {
         "name": client.get("name", ""),
+        "vertical": client.get("vertical") or intake.get("vertical", ""),
         "differentiators": intake.get("differentiators", ""),
         "amenities": intake.get("amenities", ""),
         "avoided_terms": intake.get("avoided_terms", ""),

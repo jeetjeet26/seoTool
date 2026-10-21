@@ -10,6 +10,31 @@ from modules.keyword_strategy import (
 
 
 class KeywordStrategyTests(unittest.TestCase):
+    def test_active_adult_ownership_prioritizes_age_intent_and_rejects_rental_care(self):
+        profile = "active_adult_homeownership"
+        seeds = seed_phrases("Lady Lake, Florida", "Cresswind at Hammock Oaks", profile)
+        self.assertIn("55+ communities Lady Lake", seeds)
+        self.assertIn("active adult communities Lady Lake", seeds)
+        self.assertFalse(any("apartment" in phrase or "townhome" in phrase for phrase in seeds))
+        rows = build_keyword_strategy(
+            location="Lady Lake, Florida",
+            target_url="https://example.com/",
+            property_name="Cresswind at Hammock Oaks",
+            vertical=profile,
+            related=[{"keyword": keyword, "volume": 10000} for keyword in (
+                "homes for sale lady lake", "55+ apartments lady lake",
+                "active adult rentals lady lake", "assisted living lady lake",
+                "retirement memory care lady lake", "realtor lady lake",
+            )],
+            max_keywords=5,
+        )
+        keywords = [row["keyword"] for row in rows]
+        self.assertIn("55+ communities lady lake", keywords)
+        self.assertIn("active adult communities lady lake", keywords)
+        self.assertNotIn("homes for sale lady lake", keywords)
+        self.assertFalse(any(any(bad in kw for bad in ("apartments", "rentals", "assisted", "memory care", "realtor")) for kw in keywords))
+        self.assertEqual(classify_intent("55+ homes for sale lady lake", set(), profile), "transactional")
+
     def test_no_hard_coded_keywords_survive_without_location(self):
         phrases = seed_phrases("Long Beach, California")
         self.assertTrue(all("long beach" in phrase.lower() for phrase in phrases))

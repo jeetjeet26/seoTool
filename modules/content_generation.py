@@ -174,6 +174,14 @@ class ContentGenerator:
             if value:
                 context_lines.append(f"- {key.replace('_', ' ').title()}: {value}")
         context_text = "\n".join(context_lines) or "- None provided"
+        if client_context.get("vertical") == "active_adult_homeownership":
+            context_text += (
+                "\n- Housing profile: Client-confirmed 55+ active adult homeownership. "
+                "Use 55+ and active adult positioning with new homes for sale. "
+                "Do not describe rental apartments, assisted living, memory care, "
+                "or nursing services. Only claim amenities, home types, pricing, "
+                "and availability supported by the approved context or page evidence."
+            )
 
         event_pages = [
             page for page in chunk if is_event_detail_page(str(page.get("url") or ""))

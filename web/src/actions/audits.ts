@@ -107,6 +107,7 @@ export async function queueAudit(
       "multifamily",
       "senior_living",
       "new_homes",
+      "active_adult_homeownership",
       "master_planned",
       "luxury_living",
     ].includes(communityType)

@@ -747,6 +747,11 @@ def _property_terms(vertical: str, target_markets: list[str]) -> list[str]:
             "home", "homes", "house", "houses", "townhome", "townhomes",
             "condo", "condominiums", "construction", "builder",
         ],
+        "active_adult_homeownership": [
+            "55+", "55 plus", "55 and over", "active adult", "retirement",
+            "community", "communities", "home", "homes", "house", "houses",
+            "construction", "builder", "builders",
+        ],
         "senior_housing": [
             "senior", "55 plus", "55+", "active adult", "apartment",
             "apartments", "community", "communities",

@@ -610,6 +610,14 @@ class InsightRunnerTests(unittest.TestCase):
         self.assertTrue(any("los angeles" in keyword for keyword in keywords))
         self.assertFalse(any("apartments for rent" in keyword for keyword in keywords))
 
+    def test_active_adult_homeownership_reaches_audit_research(self):
+        result = self._run(page_count=2, options={"community_type": "active_adult_homeownership"})
+        self.assertEqual(result["property_context"]["vertical"], "active_adult_homeownership")
+        keywords = [item["keyword"] for item in result["keyword_strategy"]]
+        self.assertTrue(any("55+ communities" in keyword for keyword in keywords))
+        self.assertTrue(any("active adult communities" in keyword for keyword in keywords))
+        self.assertFalse(any("apartments" in keyword for keyword in keywords))
+
     def test_alt_text_and_page_experience(self):
         result = self._run(page_count=2)
         self.assertEqual(

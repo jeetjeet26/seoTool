@@ -48,6 +48,10 @@ TRANSACTIONAL_MARKERS_BY_VERTICAL = {
         "move-in ready",
         "contact builder",
     ),
+    "active_adult_homeownership": (
+        "for sale", "buy ", "purchase", "quick move-in", "move-in ready",
+        "contact builder",
+    ),
     "master_planned": (
         "for sale",
         "buy ",
@@ -93,6 +97,10 @@ VERTICAL_MARKERS = {
     "new_homes": (
         "home", "homes", "house", "houses", "townhome", "townhomes",
         "condo", "condominiums", "construction", "builder", "builders",
+    ),
+    "active_adult_homeownership": (
+        "55", "55+", "active", "adult", "retirement", "community", "communities",
+        "home", "homes", "house", "houses", "construction", "builder", "builders",
     ),
     "master_planned": (
         "master", "planned", "community", "communities", "home", "homes",
@@ -157,7 +165,18 @@ def seed_phrases(
     # Semrush has substantially better exact-keyword coverage for city-level
     # phrases than long-form values such as "Long Beach, California".
     location = location.split(",", 1)[0].strip()
-    if vertical == "new_homes":
+    if vertical == "active_adult_homeownership":
+        phrases = [
+            f"55+ communities {location}",
+            f"active adult communities {location}",
+            f"55 and over communities {location}",
+            f"retirement communities {location}",
+            f"55+ homes for sale {location}",
+            f"new homes for sale {location}",
+            f"new construction homes {location}",
+            f"home builders {location}",
+        ]
+    elif vertical == "new_homes":
         phrases = [
             f"new homes for sale {location}",
             f"homes for sale {location}",
@@ -564,6 +583,17 @@ def build_keyword_strategy(
             )
 
     candidates = list(merged.values())
+    if vertical == "active_adult_homeownership":
+        # Ownership audiences must not inherit rental or care-service keywords
+        # from broad domain rankings, related research, or stale approved targets.
+        candidates = [
+            candidate for candidate in candidates
+            if not re.search(
+                r"\b(?:apartments?|rentals?|rent(?:ing)?|leasing|lease|"
+                r"assisted living|memory care|nursing homes?|realtors?)\b",
+                candidate.keyword,
+            )
+        ]
     for candidate in candidates:
         candidate.intent = classify_intent(candidate.keyword, brand_tokens, vertical)
         if candidate.source == "approved":
@@ -577,7 +607,15 @@ def build_keyword_strategy(
             )
 
     candidates.sort(
-        key=lambda item: (item.source == "approved", item.score, item.volume),
+        key=lambda item: (
+            item.source == "approved",
+            vertical == "active_adult_homeownership" and bool(re.search(
+                r"\b(?:55(?:\+|\s+(?:plus|and over))?|active adult|retirement)\b",
+                item.keyword,
+            )),
+            item.score,
+            item.volume,
+        ),
         reverse=True,
     )
     return [candidate.to_dict() for candidate in candidates[:max_keywords]]

@@ -157,6 +157,7 @@ export default async function ClientIntakePage({
                 <option value="multifamily">Multifamily</option>
                 <option value="senior_living">Senior Living</option>
                 <option value="new_homes">New homes for sale</option>
+                <option value="active_adult_homeownership">55+ active adult homeownership</option>
                 <option value="master_planned">Master Planned Communities</option>
                 <option value="luxury_living">Luxury Living</option>
               </select>
