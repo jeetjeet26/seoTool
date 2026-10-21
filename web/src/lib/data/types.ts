@@ -67,7 +67,7 @@ export interface CompetitorCommunity {
   rating?: number;
   review_count?: number;
   score?: number;
-  source?: "google_places" | "provided";
+  source?: "google_places" | "official_builder_website" | "provided";
   resolution_status?: "verified" | "unverified";
 }
 
