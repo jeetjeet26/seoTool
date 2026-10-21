@@ -162,3 +162,15 @@ test("large pasted reviews are preserved and over-limit reviews fail without tru
   assert.ok(reviewMessage(review, "selected paragraph").includes("Final account lead instruction"));
   assert.throws(() => reviewMessage("x".repeat(MAX_REVIEW_CHARACTERS + 1)), /Nothing was sent or truncated/);
 });
+
+
+test("text references preserve exact long quoted originals and identify a failed path for repair", () => {
+  const original = fixture();
+  original.summary.executive_summary = 'Long evidence with "quotes" and line breaks.\n'.repeat(100);
+  const path = "/summary/executive_summary";
+  const before = editReferences(original)[path];
+  const replacement = original.summary.executive_summary + "Verified.";
+  assert.equal(applyEdits(original, [{op:"replace", path, before, value:replacement}]).next.summary.executive_summary, replacement);
+  assert.throws(() => applyEdits(original, [{op:"replace", path, before:"Incorrect text", value:replacement}]), error => error.message.includes(path) && error.message.includes(before));
+  assert.ok(editReferences(original)["/summary/content_recommendations/0/proposed_title"]);
+});

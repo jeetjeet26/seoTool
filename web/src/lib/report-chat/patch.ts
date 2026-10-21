@@ -33,12 +33,14 @@ export function valueReference(value: Json): string {
 // crawl text and every field of every row in its response.
 export function editReferences(document: ReportDocument): Record<string, string> {
   const references: Record<string, string> = {};
+  function visit(path: string, value: Json) {
+    references[path] = valueReference(value);
+    if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) {
+      visit(`${path}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`, child);
+    }
+  }
   for (const [key, value] of Object.entries(document.summary)) {
-    if (!summaryKeys.has(key) || !value || typeof value !== "object") continue;
-    references[`/summary/${key}`] = valueReference(value);
-    if (Array.isArray(value)) value.forEach((row, index) => {
-      if (row && typeof row === "object") references[`/summary/${key}/${index}`] = valueReference(row);
-    });
+    if (summaryKeys.has(key)) visit(`/summary/${key}`, value);
   }
   return references;
 }
@@ -152,14 +154,14 @@ export function applyEdits(document: ReportDocument, edits: Edit[]) {
     const old = exists ? record[key] : null;
     let value: Json;
     let originalMatches: boolean;
-    if (typeof old !== "string" && /^sha256:[a-f0-9]{64}$/.test(edit.before)) originalMatches = edit.before === valueReference(old);
+    if (edit.before !== old && /^sha256:[a-f0-9]{64}$/.test(edit.before)) originalMatches = edit.before === valueReference(old);
     else {
       let expected: Json;
       try { expected = typeof old === "string" ? edit.before : JSON.parse(edit.before); } catch { throw new ChatError("The model returned invalid original values. Please try again."); }
       originalMatches = canonical(old) === canonical(expected);
     }
     if (edit.op !== "add" && !exists) throw new ChatError("The requested report item no longer exists.", 409);
-    if (!originalMatches) throw new ChatError("The original text did not match. Please specify the exact item.", 409);
+    if (!originalMatches) throw new ChatError(`The original text did not match at ${edit.path}. Use before ${valueReference(old)} for this value.`, 409);
     if (edit.op === "retain") value = retainRecommendations(old, edit.value);
     else if (edit.op === "remove") value = null;
     else if (typeof old === "string" || (path[0] === "summary" && (
