@@ -184,6 +184,11 @@ def coverage_rows(summary):
         ["Discovery and index coverage", "Not established by these findings", "An issue list does not prove coverage of orphan URLs, all link sources, rendered content or search-engine indexing.", "Reconcile a link-discovery crawl, sitemap inventory and Search Console evidence."],
         ["Performance", "Sampled lab evidence" if summary.get("page_experience") else "No measurements available", f"{len(summary.get('page_experience') or [])} sampled pages", "Use field data separately; lab results are not a sitewide Core Web Vitals verdict."],
     ]
+    attempts = crawl.get("crawler_attempts") or {}
+    if attempts:
+        rows.append(["Crawler profile", attempts.get("selected_profile", "default"),
+                     json.dumps(attempts.get("attempts", []), sort_keys=True),
+                     "A browser profile changes the HTTP identity; it does not imply JavaScript rendering or bypass a network-level block."])
     for error in summary.get("enrichment_errors") or []:
         rows.append([error.get("service", "Source"), "Unavailable / limited", error.get("message", ""), "Complete this source before asserting full coverage."])
     return rows

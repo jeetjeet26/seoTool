@@ -113,7 +113,7 @@ class InsightRunner:
                 {
                     "service": "screaming_frog",
                     "message": (
-                        "Screaming Frog was blocked by the target site. "
+                        "Screaming Frog returned no usable pages. "
                         f"Browser-style fallback analyzed {len(inventory.pages)} pages; "
                         "technical findings are limited to the available HTML evidence."
                     ),
@@ -130,6 +130,9 @@ class InsightRunner:
                 "pages": len(inventory.pages),
                 "scope": "sitemap_only" if sitemap_only else "full_crawl",
             }
+        attempts_path = Path(crawl_dir) / "crawl_attempts.json"
+        if attempts_path.exists():
+            result["crawl_coverage"]["crawler_attempts"] = json.loads(attempts_path.read_text())
         calendar_technical_only = calendar_pages_are_technical_only(
             job.target_url,
             job.options,

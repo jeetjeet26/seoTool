@@ -29,6 +29,14 @@ must never be committed.
 
 ## Image
 
+Normal crawls that return HTTP 403 for documents automatically retry once with
+the bundled browser HTTP profile before HTML fallback. Both attempts use the
+same URL scope and export tabs. The retry is limited to ten minutes, does not
+run when HTTP 429 is observed, and is selected only if it recovers more HTML
+pages. Failed retries retain the first attempt's exports. `crawl_attempts.json`
+and the report's Technical Coverage sheet record the selected profile and counts.
+The browser profile respects robots.txt and does not enable JavaScript rendering.
+
 `worker/Dockerfile` installs the official Screaming Frog Ubuntu package and
 runs the Python worker under Xvfb. Update the package URL build argument when
 upgrading Screaming Frog and verify the CLI export names against the
