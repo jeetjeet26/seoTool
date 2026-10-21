@@ -392,6 +392,7 @@ def build_keyword_strategy(
     approved_targets: list[dict] | None = None,
     property_terms: list[str] | None = None,
     excluded_terms: list[str] | None = None,
+    excluded_exact_keywords: list[str] | None = None,
     competitor_terms: list[str] | None = None,
     vertical: str = "multifamily",
     secondary_locations: list[str] | None = None,
@@ -582,7 +583,13 @@ def build_keyword_strategy(
                 },
             )
 
-    candidates = list(merged.values())
+    excluded_exact = {
+        " ".join(value.lower().split()) for value in (excluded_exact_keywords or [])
+    }
+    candidates = [
+        candidate for candidate in merged.values()
+        if " ".join(candidate.keyword.lower().split()) not in excluded_exact
+    ]
     if vertical == "active_adult_homeownership":
         # Ownership audiences must not inherit rental or care-service keywords
         # from broad domain rankings, related research, or stale approved targets.

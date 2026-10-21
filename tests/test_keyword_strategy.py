@@ -10,6 +10,15 @@ from modules.keyword_strategy import (
 
 
 class KeywordStrategyTests(unittest.TestCase):
+    def test_exact_removal_preserves_more_specific_new_construction_keyword(self):
+        rows = build_keyword_strategy(
+            location="Orlando", target_url="https://example.com/", vertical="new_homes",
+            excluded_exact_keywords=["HOMES FOR SALE ORLANDO"],
+        )
+        keywords = [row["keyword"] for row in rows]
+        self.assertNotIn("homes for sale orlando", keywords)
+        self.assertIn("new homes for sale orlando", keywords)
+
     def test_active_adult_ownership_prioritizes_age_intent_and_rejects_rental_care(self):
         profile = "active_adult_homeownership"
         seeds = seed_phrases("Lady Lake, Florida", "Cresswind at Hammock Oaks", profile)

@@ -307,7 +307,8 @@ class InsightRunner:
         # Site Audit setup failures must not suppress organic/keyword research.
         try:
             site_audit = self.semrush.get_site_audit(
-                job.target_url, str(intake.get("semrush_project_id") or ""),
+                job.target_url,
+                str(job.options.get("semrush_project_id") or intake.get("semrush_project_id") or ""),
                 page_limit=job.page_limit,
             )
             raw_site_findings = site_audit.pop("findings", [])
@@ -343,6 +344,7 @@ class InsightRunner:
             approved_targets=approved_targets,
             property_terms=_property_terms(vertical, target_markets),
             excluded_terms=excluded_terms,
+            excluded_exact_keywords=_list_values(job.options.get("excluded_keyword_targets")),
             competitor_terms=competitor_terms,
             vertical=vertical,
             secondary_locations=secondary_locations,
@@ -439,7 +441,7 @@ class InsightRunner:
                             "differentiators": intake.get("differentiators", ""),
                             "amenities": intake.get("amenities", ""),
                             "avoided_terms": "; ".join(excluded_terms),
-                            "title_style_guide": intake.get("title_style_guide", ""),
+                            "title_style_guide": job.options.get("title_style_guide") or intake.get("title_style_guide", ""),
                             "fair_housing_enabled": bool(
                                 intake.get("fair_housing_enabled", False)
                             ),

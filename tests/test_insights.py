@@ -378,6 +378,12 @@ class InsightRunnerTests(unittest.TestCase):
         self.assertEqual(metadata.call_args.kwargs["client_context"]["additional_instructions"], "Use our updated property name.")
         self.assertEqual(alt.call_args.kwargs["additional_instructions"], "Use our updated property name.")
 
+    def test_run_style_and_site_audit_project_override_intake(self):
+        with patch.object(FakeGenerator, "generate_bulk_metadata", return_value=[]) as metadata, patch.object(FakeSemrush, "get_site_audit", return_value={"findings": []}) as site_audit:
+            self._run(1, options={"title_style_guide": "Use | separators.", "semrush_project_id": "31675241"}, client_intake={"title_style_guide": "Use hyphens.", "semrush_project_id": "old"})
+        self.assertEqual(metadata.call_args.kwargs["client_context"]["title_style_guide"], "Use | separators.")
+        self.assertEqual(site_audit.call_args.args[1], "31675241")
+
     def test_event_detail_pages_are_fetched_and_keep_copy(self):
         fetched_urls: list[str] = []
 
