@@ -127,7 +127,11 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
                       />
                       {occurrence.url
                         ? <span><a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>{occurrence.resourceUrl && occurrence.resourceUrl !== occurrence.url && <small>Resource: <a href={occurrence.resourceUrl} target="_blank" rel="noreferrer">{occurrence.resourceUrl.replace(/^https?:\/\//, "")}</a></small>}</span>
-                        : <span>URL not reported</span>}
+                        : <span>Site-wide / URL not reported</span>}
+                      {occurrence.details.map((detail) => <div key={detail.id}>
+                        {detail.description && <p style={{ whiteSpace: "pre-wrap" }}><strong>Evidence and impact:</strong> {detail.description}</p>}
+                        {detail.recommendation && <p style={{ whiteSpace: "pre-wrap" }}><strong>Recommendation:</strong> {detail.recommendation}</p>}
+                      </div>)}
                     </div>;
                   })}
                 </div>
@@ -145,6 +149,7 @@ type UrlOccurrence = {
   url: string;
   resourceUrl: string;
   findingIds: string[];
+  details: Pick<Finding, "id" | "description" | "recommendation">[];
   resolved: boolean;
 };
 
@@ -181,6 +186,7 @@ function groupFindings(
       url: members[0]?.pageUrl || members[0]?.resourceUrl || "",
       resourceUrl: members[0]?.resourceUrl || "",
       findingIds: members.map((member) => member.id),
+      details: members.map(({ id, description, recommendation }) => ({ id, description, recommendation })),
       resolved: members.every((member) => statusById.get(member.id) === "resolved"),
     }));
     return {

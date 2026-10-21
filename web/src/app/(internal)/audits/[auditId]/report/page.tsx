@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ReportChat } from "@/components/report-chat";
+import { RunAutoRefresh } from "@/components/tools/run-progress";
 import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/app-shell";
@@ -52,6 +54,8 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
   const preparedDate = formatDate(audit.updatedAt, "long");
 
   return <>
+    <ReportChat key={auditId} auditId={auditId} reportName={summary.property_context?.name || audit.clientName} reportUrl={audit.url}/>
+    <RunAutoRefresh active={summary.report_edit?.export_state === "pending"}/>
     <div className="breadcrumbs"><Link href={`/audits/${auditId}`}>Audit {auditId}</Link><Icon name="chevron"/><span>Report</span></div>
     <PageHeader eyebrow="Technical SEO report" title={summary.property_context?.name || audit.clientName} description={`${summary.property_context?.location ? `${summary.property_context.location} · ` : ""}Prepared ${preparedDate} · ${audit.pages} pages analyzed`} action={<ReportActions auditId={auditId}/>}/>
     <section className="report-hero">
@@ -61,7 +65,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     <section className="category-grid" aria-label="SEO category scores">
       {categoryCards.map((item) => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></article>)}
     </section>
-    <section className="card report-section"><div className="section-title"><div><h2>Prioritized findings</h2><p>Filter issues, open affected URLs, and select approved findings for task review.</p></div></div><FindingsTable findings={findings} auditId={auditId}/></section>
+    <section className="card report-section"><div className="section-title"><div><h2>Prioritized findings</h2><p>Filter issues, open affected URLs, and select approved findings for task review.</p></div></div><FindingsTable key={summary.report_edit?.revision ?? "initial"} findings={findings} auditId={auditId}/></section>
     <AuditInsights auditId={auditId} summary={summary} approvedTargets={(approvedTargets ?? []) as Array<{id:string;keyword:string;canonical_url:string;role:"primary"|"secondary"}>}/>
     <div className="two-column report-section">
       {summary.fair_housing_enabled && <section className="card"><div className="section-title"><div><h2>Fair Housing compliance</h2><p>This client has housing-specific safeguards enabled.</p></div></div><div className="recommendations"><article><span>Review status</span><strong>Human review required before publishing</strong><p>Confirm accuracy, brand voice, and legal suitability before implementation.</p></article></div></section>}
@@ -69,7 +73,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     </div>
     {clientToolRuns.length > 0 && <section className="card report-section"><div className="section-title"><div><h2>Tool outputs for this client</h2><p>Approved keyword, metadata, schema, and llms.txt work from the tools workspace.</p></div></div><div className="recommendations">{clientToolRuns.slice(0, 6).map((run) => <article key={run.id}><span>{run.toolType.replaceAll("_", " ")}</span><strong><Link className="text-link" href={`/tools/runs/${run.id}`}>{run.name}</Link></strong><p>Completed {formatDate(run.updatedAt, "long")} — open the run to review approved items and exports.</p></article>)}</div></section>}
     <section className="card report-section"><div className="section-title"><div><h2>Audit history</h2><p>Score movement across completed scans.</p></div></div><div className="history">{(history.length ? history : [audit]).map((item, index, list) => <span key={item.id} className={index === list.length - 1 ? "active" : ""} style={{height:`${Math.max(30, item.score ?? 0)}%`}}><b>{item.score ?? "—"}</b><small>{formatDate(item.createdAt, "short")}</small></span>)}</div></section>
-    {artifacts.length > 0 && <section className="card report-section"><div className="section-title"><div><h2>Source files and exports</h2><p>Download the complete Screaming Frog exports, saved crawl when available, and generated report files.</p></div></div><div className="artifact-list">{artifacts.map((artifact) => artifact.url && <a key={artifact.id} className="artifact-link" href={artifact.url}><strong>{artifact.object_path.split("/").at(-1)}</strong><span>{artifact.kind} · {formatBytes(artifact.byte_size)}</span></a>)}</div></section>}
+    {artifacts.length > 0 && <section className="card report-section"><div className="section-title"><div><h2>Source files and exports</h2><p>Download the complete Screaming Frog exports, saved crawl when available, and generated report files.</p></div></div><div className="artifact-list">{artifacts.map((artifact) => artifact.url && <a key={artifact.id} className="artifact-link" href={artifact.url}><strong>{artifact.object_path.split("/").at(-1)}{artifact.kind === "report-export" && summary.report_edit?.export_state && summary.report_edit.export_state !== "ready" ? " (previous version — updated export pending)" : ""}</strong><span>{artifact.kind} · {formatBytes(artifact.byte_size)}</span></a>)}</div></section>}
   </>;
 }
 
@@ -97,6 +101,7 @@ function buildCategoryCards(summary: AuditSummary) {
 }
 
 function executiveSummary(summary: AuditSummary, findingCount: number) {
+  if (summary.executive_summary !== undefined) return summary.executive_summary;
   if (summary.normalization_status === "incomplete") {
     return "Crawl evidence was collected, but some evidence could not be converted into findings. Health scoring is withheld until normalization is complete.";
   }

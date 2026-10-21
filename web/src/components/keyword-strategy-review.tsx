@@ -39,7 +39,7 @@ export function KeywordStrategyReview({
         keyword: item.keyword,
         canonicalUrl: item.assigned_page,
         role: "primary",
-        metrics: {
+        metrics: item.source === "analyst_provided_metrics_pending" ? {} : {
           volume: item.volume,
           cpc: item.cpc,
           difficulty: item.difficulty,
@@ -79,14 +79,15 @@ export function KeywordStrategyReview({
             {keywords.map((item) => {
               const isApproved = item.source === "approved"
                 || approved.has(`${item.keyword.toLowerCase()}\n${item.assigned_page}`);
+              const metricsPending = item.source === "analyst_provided_metrics_pending";
               return <tr key={`${item.source}-${item.keyword}`}>
                 <td><strong>{item.keyword}</strong></td>
-                <td>{isApproved ? "approved" : item.source}</td>
+                <td>{isApproved ? "approved" : metricsPending ? "Analyst review · metrics pending" : item.source}</td>
                 <td>{item.intent}</td>
                 <td>{item.position ?? "—"}</td>
-                <td>{formatNumber(item.volume)}</td>
-                <td>{formatCurrency(item.cpc)}</td>
-                <td>{item.difficulty || "—"}</td>
+                <td>{metricsPending ? "Pending" : formatNumber(item.volume)}</td>
+                <td>{metricsPending ? "Pending" : formatCurrency(item.cpc)}</td>
+                <td>{metricsPending ? "Pending" : item.difficulty || "—"}</td>
                 <td className="url-cell"><a href={item.assigned_page} target="_blank" rel="noreferrer">{stripProtocol(item.assigned_page)}</a></td>
                 <td>{isApproved
                   ? <span className="status-badge complete">Locked</span>

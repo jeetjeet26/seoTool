@@ -28,6 +28,22 @@ class ReportChatExportTests(unittest.TestCase):
             self.assertEqual(workbook["Keyword Research"].cell(row=6, column=1).value, "replacement keyword")
             self.assertEqual(workbook["Program Recap"].cell(row=5, column=1).value, summary["executive_summary"])
 
+    def test_analyst_findings_and_pending_metrics_survive_workbook(self):
+        note = "Document only — account lead review; do not implement."
+        findings = [Finding(id="analyst-note", category="account_lead", severity=Severity.MEDIUM,
+            issue_type="analyst_provided", page_url="", resource_url="", evidence='{"source":"analyst_provided"}',
+            recommendation=note, source_file="Analyst review", metadata={"report_chat_edited": True,
+            "report_title": "Template heading", "report_description": "Analyst reports template headings use H2."})]
+        summary = {"keyword_strategy": [{"keyword": "55+ communities lady lake fl",
+            "source": "analyst_provided_metrics_pending", "volume": 0, "cpc": 0, "difficulty": 0}]}
+        with tempfile.TemporaryDirectory() as directory:
+            paths = generate_report_exports("test", findings, summary, Path(directory))
+            workbook = load_workbook(next(p for p in paths if p.suffix == ".xlsx"))
+            text = "\n".join(str(cell.value) for sheet in workbook for row in sheet for cell in row if cell.value)
+            self.assertIn(note, text)
+            self.assertIn("Analyst reports template headings use H2.", text)
+            self.assertEqual(workbook["Keyword Research"].cell(row=6, column=5).value, "Pending")
+
     def test_individual_finding_edits_survive_grouped_export(self):
         def finding(id, recommendation, metadata):
             return Finding(id=id, category="metadata", severity=Severity.HIGH,

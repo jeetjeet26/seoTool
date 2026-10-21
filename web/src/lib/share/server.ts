@@ -194,6 +194,7 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
       page_url: string | null;
       resource_url: string | null;
       recommendation: string;
+      description: string;
     }>
   >`
     select
@@ -205,9 +206,11 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
       title,
       page_url,
       resource_url,
+      description,
       recommendation
     from public.findings
     where audit_id = ${auditId}::uuid
+      and coalesce(metadata->>'report_hidden', 'false') <> 'true'
     order by
       case severity
         when 'critical' then 1
@@ -230,6 +233,7 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
     pageUrl: finding.page_url ?? "",
     resourceUrl: finding.resource_url ?? undefined,
     recommendation: finding.recommendation,
+    description: finding.description,
   }));
   const score =
     typeof audit.summary?.score === "number" ? audit.summary.score : null;
@@ -309,6 +313,8 @@ export async function loadPortalProgress(
 
 function mapFindingCategory(category: string): Finding["category"] {
   const normalized = category.toLowerCase();
+  if (normalized === "account_lead") return "Account lead";
+  if (normalized === "technical") return "Technical";
   if (normalized.includes("metadata")) return "Metadata";
   if (normalized.includes("content") || normalized.includes("heading")) return "Content";
   if (

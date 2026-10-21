@@ -303,9 +303,9 @@ def build_client_workbook(
                     row.get("keyword", ""),
                     row.get("position") or "-",
                     (row.get("intent") or "commercial")[:1],
-                    row.get("cpc") or "n/a",
-                    row.get("volume") or "n/a",
-                    row.get("difficulty") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("cpc") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("volume") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("difficulty") or "n/a",
                     row.get("assigned_page", ""),
                 ]
                 for row in keywords
