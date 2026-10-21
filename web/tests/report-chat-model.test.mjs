@@ -167,3 +167,190 @@ test("research-only answers retain evidence without saving report edits", async 
   assert.deepEqual(plan.edits, []);
   assert.equal(plan.research[0].data.volume, 0);
 });
+
+test("a copied multi-section review completes seven read calls instead of asking the user to narrow it", async t => {
+  const document = fixture();
+  const id = "11111111-1111-4111-8111-111111111111";
+  document.findings[id] = { title: "Missing H1", description: "Existing finding", recommendation: "Review the template", category: "headings", severity: "low", page_url: target.url, resource_url: "" };
+  const searches = ["structured", "alt text", "anchor", "sitemap", "redirect", "H1"].map((query, index) => ({
+    type: "function_call", call_id: `search-${index}`, name: "search_findings", arguments: JSON.stringify({ query, page_url: "", offset: 0 }),
+  }));
+  const calls = [...searches, { type: "function_call", call_id: "pages", name: "read_live_pages", arguments: JSON.stringify({ urls: [target.url] }) }];
+  injectResearch(() => ({ sources: [], execute: async () => ({ pages: [{ status: "ok", body_text: "Existing intro paragraph." }] }) }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  const prompt = "Have these changes been made? If not make them.\nSEO review: keep the four selected pages.\nCopied conversation: 23 changes · Saved. Undo this edit.\nSEO review: keep the four selected pages.";
+  const history = [{ role: "user", content: "Temporary deployment verification: append a test note." }, { role: "assistant", content: "Added the temporary note. [This edit was undone.]" }];
+  const bodies = await mockModel(t, (body, round) => {
+    if (round === 1) return { status: "completed", output: calls };
+    const results = body.input.filter(item => item.type === "function_call_output");
+    assert.deepEqual(results.map(item => item.call_id), calls.map(item => item.call_id));
+    assert.equal(JSON.parse(results[5].output).findings[id].title, "Missing H1");
+    assert.equal(JSON.parse(results[6].output).pages[0].status, "ok");
+    return response(retainedPlan(document));
+  });
+  const original = structuredClone(document);
+  const plan = await planEdits(document, target, history, prompt);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].input.at(-1).content, prompt);
+  assert.deepEqual(document, original);
+  assert.equal(applyEdits(document, plan.edits).next.summary.content_recommendations.length, 4);
+});
+
+test("read calls are queued with bounded concurrency and one failure does not discard other results", async t => {
+  let active = 0, maximum = 0;
+  const calls = Array.from({ length: 11 }, (_, index) => ({ type: "function_call", call_id: `read-${index}`, name: "lookup_semrush_keywords", arguments: JSON.stringify({ keywords: [`keyword ${index}`] }) }));
+  injectResearch(() => ({ sources: [], execute: async (_name, args) => {
+    active++;
+    maximum = Math.max(maximum, active);
+    await new Promise(resolve => setTimeout(resolve, 2));
+    active--;
+    const keyword = JSON.parse(args).keywords[0];
+    if (keyword === "keyword 2") throw new Error("Private provider details must not escape");
+    return { keyword, status: "measured", volume: 0 };
+  } }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  await mockModel(t, (body, round) => {
+    if (round === 1) return { status: "completed", output: calls };
+    const outputs = body.input.filter(item => item.type === "function_call_output");
+    assert.deepEqual(outputs.map(item => item.call_id), calls.map(item => item.call_id));
+    outputs.forEach((item, index) => {
+      const result = JSON.parse(item.output);
+      assert.equal(result.status, index === 2 ? "error" : "measured");
+      if (index !== 2) assert.equal(result.keyword, `keyword ${index}`);
+    });
+    assert.ok(!JSON.stringify(outputs).includes("Private provider details"));
+    return response({ message: "Completed available lookups.", edits: [], pending: ["Keyword 2 lookup failed."] });
+  });
+  const plan = await planEdits(fixture(), target, [], "Check these keyword measurements.");
+  assert.equal(maximum, 4);
+  assert.equal(active, 0);
+  assert.deepEqual(plan.pending, ["Keyword 2 lookup failed."]);
+});
+
+test("lookup budget exhaustion returns every call result and reserves final synthesis", async t => {
+  let executed = 0;
+  injectResearch(() => ({ sources: [], execute: async () => { executed++; return { status: "no_data" }; } }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  const calls = Array.from({ length: 70 }, (_, index) => ({ type: "function_call", call_id: `read-${index}`, name: "lookup_semrush_keywords", arguments: '{"keywords":["same cached keyword"]}' }));
+  await mockModel(t, (body, round) => {
+    if (round === 1) return { status: "completed", output: calls };
+    assert.equal(body.tool_choice, "none");
+    const outputs = body.input.filter(item => item.type === "function_call_output");
+    assert.equal(outputs.length, calls.length);
+    assert.equal(outputs.filter(item => JSON.parse(item.output).status === "unavailable").length, 6);
+    return response({ message: "Completed supported work.", edits: [], pending: ["Remaining checks exceeded the lookup budget."] });
+  });
+  const plan = await planEdits(fixture(), target, [], "Review these requested findings.");
+  assert.equal(executed, 64);
+  assert.equal(plan.pending.length, 1);
+});
+
+test("the research deadline stops queued calls and keeps a model round for the final plan", async t => {
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
+  let executed = 0;
+  injectResearch(() => ({ sources: [], execute: async () => { executed++; now += 120_001; return { status: "ok" }; } }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  const calls = Array.from({ length: 7 }, (_, index) => ({ type: "function_call", call_id: `page-${index}`, name: "read_live_pages", arguments: JSON.stringify({ urls: [target.url] }) }));
+  await mockModel(t, (body, round) => {
+    if (round === 1) return { status: "completed", output: calls };
+    assert.equal(body.tool_choice, "none");
+    const outputs = body.input.filter(item => item.type === "function_call_output");
+    assert.equal(outputs.length, 7);
+    assert.equal(JSON.parse(outputs[0].output).status, "ok");
+    assert.ok(outputs.slice(1).every(item => JSON.parse(item.output).status === "unavailable"));
+    return response({ message: "Completed supported work.", edits: [], pending: ["Remaining live checks reached the research deadline."] });
+  });
+  await planEdits(fixture(), target, [], "Check the listed pages.");
+  assert.equal(executed, 1);
+});
+
+test("a final synthesis validation error still gets its repair round", async t => {
+  const document = fixture();
+  const plan = retainedPlan(document);
+  const invalid = structuredClone(plan);
+  invalid.edits[0].before = valueReference([]);
+  const bodies = await mockModel(t, (body, round) => {
+    if (round <= 7) return { status: "completed", output: [{ type: "function_call", call_id: `search-${round}`, name: "search_findings", arguments: '{"query":"","page_url":"","offset":0}' }] };
+    assert.equal(body.tool_choice, "none");
+    return response(round === 8 ? invalid : plan);
+  });
+  const result = await planEdits(document, target, [], "Review and retain the four selected pages.");
+  assert.equal(bodies.length, 9);
+  assert.match(bodies[8].input.at(-1).content, /Edit validation failed/);
+  assert.equal(applyEdits(document, result.edits).changes.length, 1);
+});
+
+test("existing keyword rows retain unresolved measurements after a fresh no-data lookup", async t => {
+  const document = fixture();
+  const measured = { keyword: "new homes", source: "semrush", volume: 120, cpc: 1, difficulty: 20, competition: 0.5, position: null, score: 0, intent: "commercial", assigned_page: target.url, evidence: { metrics_status: "measured", queried_at: "2026-10-20T00:00:00Z" } };
+  const unknown = { ...measured, keyword: "55+ homes nearby", source: "analyst_provided_metrics_pending", volume: 0, cpc: 0, difficulty: 0, competition: 0, evidence: { metrics_status: "no_data", api_code: "50", queried_at: "2026-10-20T00:00:00Z" } };
+  document.summary.keyword_strategy = [measured, unknown];
+  const original = structuredClone(document);
+  const research = [];
+  const requested = [];
+  injectResearch(() => ({ sources: research, execute: async (_name, args) => {
+    requested.push(...JSON.parse(args).keywords);
+    const data = { keyword: unknown.keyword, status: "no_data", volume: null, evidence: { metrics_status: "no_data", api_code: "50", queried_at: "2026-10-21T00:00:00Z" } };
+    research.push({ tool: "semrush", subject: unknown.keyword, status: "no_data", checkedAt: data.evidence.queried_at, data });
+    return { database: "us", results: [data] };
+  } }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  await mockModel(t, (body, round) => {
+    if (round === 1) {
+      const context = JSON.parse(body.input[0].content.split("\n").slice(1).join("\n"));
+      assert.deepEqual(context.report.summary.keyword_strategy, original.summary.keyword_strategy);
+      return { status: "completed", output: [{ type: "function_call", call_id: "missing-volume", name: "lookup_semrush_keywords", arguments: JSON.stringify({ keywords: [unknown.keyword] }) }] };
+    }
+    const lookup = JSON.parse(body.input.at(-1).output);
+    assert.equal(lookup.results[0].status, "no_data");
+    return response({ message: "The keyword additions are already present. The missing volume was checked again.", edits: [], pending: [`${unknown.keyword}: Semrush US still returned no data for search volume.`] });
+  });
+  const plan = await planEdits(document, target, [], "Have these changes been made? If not make them. Add new homes and 55+ homes nearby, and pull Semrush volume for both. Client open question: should we add another competitor?");
+  assert.deepEqual(requested, [unknown.keyword]);
+  assert.deepEqual(document, original);
+  assert.deepEqual(plan.edits, []);
+  assert.deepEqual(plan.pending, [`${unknown.keyword}: Semrush US still returned no data for search volume.`]);
+  assert.equal(plan.research[0].data.evidence.queried_at, "2026-10-21T00:00:00Z");
+});
+
+test("a broad review cannot silently mark existing pending keyword measurements complete", async t => {
+  const document = fixture();
+  document.summary.keyword_strategy = [
+    { keyword: "unknown homes", source: "analyst_provided_metrics_pending", volume: 0, difficulty: 0, cpc: 0, competition: 0, score: 0, intent: "commercial", assigned_page: target.url, evidence: { metric_status: "no_data" } },
+    { keyword: "measured homes", source: "semrush", volume: 0, difficulty: 0, cpc: 0, competition: 0, score: 0, intent: "commercial", assigned_page: target.url, evidence: { metrics_status: "measured" } },
+  ];
+  const bodies = await mockModel(t, () => response({ message: "Existing keyword rows are present.", edits: [], pending: [] }));
+  const plan = await planEdits(document, target, [], "Have these review changes been made? Pull Semrush volume for unknown homes and measured homes.");
+  const context = JSON.parse(bodies[0].input[0].content.split("\n").slice(1).join("\n"));
+  assert.deepEqual(context.pending_metric_index.map(item => item.keyword), ["unknown homes"]);
+  assert.equal(plan.pending.length, 1);
+  assert.match(plan.pending[0], /unknown homes.*volume/);
+  assert.doesNotMatch(plan.pending[0], /measured homes/);
+});
+
+test("resolved, removed, unrelated, and already reported pending metrics are not added again", async t => {
+  const row = { keyword: "unknown homes", source: "analyst_provided_metrics_pending", volume: 0, difficulty: 0, cpc: 0, competition: 0, score: 0, intent: "commercial", assigned_page: target.url, evidence: { metric_status: "no_data" } };
+  const document = { summary: { keyword_strategy: [row] }, findings: {} };
+  let nextPlan = { message: "Done.", edits: [{ op: "remove", path: "/summary/keyword_strategy/0", before: valueReference(row), value: "null" }], pending: [] };
+  await mockModel(t, () => response(nextPlan));
+  assert.deepEqual((await planEdits(document, target, [], "Remove unknown homes; its Semrush data is unavailable.")).pending, []);
+  const measured = { ...row, source: "semrush", evidence: { metrics_status: "measured" } };
+  nextPlan = { message: "Updated.", edits: [{ op: "replace", path: "/summary/keyword_strategy/0", before: valueReference(row), value: JSON.stringify(measured) }], pending: [] };
+  assert.deepEqual((await planEdits(document, target, [], "Pull Semrush for unknown homes.")).pending, []);
+  nextPlan = { message: "Unchanged.", edits: [], pending: [] };
+  assert.deepEqual((await planEdits(document, target, [], "Explain the title counts.")).pending, []);
+  nextPlan.pending = ["Semrush has no data for unknown homes."];
+  assert.deepEqual((await planEdits(document, target, [], "Pull Semrush for unknown homes.")).pending, nextPlan.pending);
+});
+
+test("measured volume is complete when only unrequested keyword metrics are missing", async t => {
+  const document = fixture();
+  document.summary.keyword_strategy = [{ keyword: "partial homes", source: "semrush", volume: 120, difficulty: 0, cpc: 1, competition: 0.2, score: 0, intent: "commercial", assigned_page: target.url, evidence: { metrics_status: "partial", missing_metrics: ["difficulty"] } }];
+  await mockModel(t, () => response({ message: "Existing volume is measured.", edits: [], pending: [] }));
+  assert.deepEqual((await planEdits(document, target, [], "Pull Semrush volume for partial homes.")).pending, []);
+  const plan = await planEdits(document, target, [], "Pull Semrush metrics for partial homes.");
+  assert.equal(plan.pending.length, 1);
+  assert.match(plan.pending[0], /partial homes.*difficulty/);
+  assert.doesNotMatch(plan.pending[0], /volume/);
+});
