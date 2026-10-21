@@ -33,14 +33,24 @@ export function valueReference(value: Json): string {
 // crawl text and every field of every row in its response.
 export function editReferences(document: ReportDocument): Record<string, string> {
   const references: Record<string, string> = {};
-  function visit(path: string, value: Json) {
+  function record(path: string, value: Json) {
     references[path] = valueReference(value);
-    if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) {
-      visit(`${path}/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`, child);
-    }
   }
   for (const [key, value] of Object.entries(document.summary)) {
-    if (summaryKeys.has(key)) visit(`/summary/${key}`, value);
+    if (!summaryKeys.has(key)) continue;
+    const path = `/summary/${key}`;
+    record(path, value);
+    // Reference rows and their immediate fields, not every node in retained
+    // Lighthouse evidence (which can contain tens of thousands of nodes).
+    if (Array.isArray(value)) value.forEach((row, index) => {
+      record(`${path}/${index}`, row);
+      if (object(row)) for (const [field, child] of Object.entries(row)) {
+        record(`${path}/${index}/${field.replaceAll("~", "~0").replaceAll("/", "~1")}`, child);
+      }
+    });
+    else if (object(value)) for (const [field, child] of Object.entries(value)) {
+      record(`${path}/${field.replaceAll("~", "~0").replaceAll("/", "~1")}`, child);
+    }
   }
   return references;
 }

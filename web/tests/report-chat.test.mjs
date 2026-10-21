@@ -174,3 +174,12 @@ test("text references preserve exact long quoted originals and identify a failed
   assert.throws(() => applyEdits(original, [{op:"replace", path, before:"Incorrect text", value:replacement}]), error => error.message.includes(path) && error.message.includes(before));
   assert.ok(editReferences(original)["/summary/content_recommendations/0/proposed_title"]);
 });
+
+
+test("references stay bounded for large nested Lighthouse evidence", () => {
+  const document = fixture();
+  document.summary.page_experience = [{url:"https://example.com/", performance_issues:[{details:{items:Array.from({length:5000},(_,i)=>({url:`https://example.com/${i}`, evidence:"Retained source evidence"}))}}]}];
+  const refs = editReferences(document);
+  assert.ok(refs["/summary/page_experience/0/performance_issues"]);
+  assert.ok(Object.keys(refs).length < 100);
+});
