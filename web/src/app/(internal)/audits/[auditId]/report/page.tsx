@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { ReportChat } from "@/components/report-chat";
 import { RunAutoRefresh } from "@/components/tools/run-progress";
+import { notFound } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { PageHeader } from "@/components/app-shell";
 import { AuditInsights } from "@/components/audit-insights";
