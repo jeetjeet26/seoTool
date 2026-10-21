@@ -42,7 +42,7 @@ class FakeSemrush:
     def get_backlinks_overview(self, domain):
         return {"authority_score": 28}
 
-    def get_site_audit(self, target_url, preferred_project_id=""):
+    def get_site_audit(self, target_url, preferred_project_id="", **kwargs):
         return {
             "project_id": 1,
             "project_name": "Test project",
@@ -308,6 +308,15 @@ class InsightRunnerTests(unittest.TestCase):
             writer = csv.DictWriter(stream, fieldnames=["Address", "Alt Text"])
             writer.writeheader()
             writer.writerow({"Address": "https://example.com/pool.jpg", "Alt Text": ""})
+
+    def test_site_audit_access_failure_does_not_hide_keyword_research(self):
+        from modules.semrush import SiteAuditError
+        with patch.object(FakeSemrush, 'get_site_audit', side_effect=SiteAuditError('access_denied', 'Enable Site Audit: HTTP 403 — permission denied')):
+            result = self._run(1)
+        self.assertTrue(result['keyword_metrics'])
+        self.assertEqual(result['semrush_site_audit']['status'], 'access_denied')
+        self.assertTrue(any('permission denied' in e['message'] for e in result['enrichment_errors']))
+        self.assertFalse(any('No completed Semrush' in e['message'] for e in result['enrichment_errors']))
 
     def _run(
         self,

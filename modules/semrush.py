@@ -1,10 +1,18 @@
 import re
+import hashlib
 import time
 from urllib.parse import urlsplit
 
 import requests
 
 from config import Config
+
+class SiteAuditError(RuntimeError):
+    """Actionable, credential-safe Projects/Site Audit failure."""
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
 
 class SemrushClient:
     BASE_URL = "https://api.semrush.com/"
@@ -269,23 +277,15 @@ class SemrushClient:
         self,
         target_url: str,
         preferred_project_id: str = "",
+        *, page_limit: int = 100, wait_seconds: int = 600,
     ) -> dict:
         """Return the latest matching Semrush Site Audit and all scoped issues."""
-        if not self.api_key:
-            return {}
-        hostname = _normalize_domain(urlsplit(target_url).hostname or "")
-        project = self._find_project(hostname, preferred_project_id)
-        if not project:
-            return {}
-        project_id = str(project["project_id"])
-        info = self._project_json(
-            f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/info",
-            ignore_not_found=True,
+        hostname = _normalize_domain(target_url)
+        project, info, snapshot, created = self._ensure_site_audit(
+            target_url, preferred_project_id, page_limit, wait_seconds,
         )
-        snapshot = info.get("current_snapshot") or {}
-        snapshot_id = snapshot.get("snapshot_id")
-        if not snapshot_id:
-            return {}
+        project_id = str(project['project_id'])
+        snapshot_id = snapshot['snapshot_id']
         issue_meta = self._project_json(
             f"{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit/meta/issues"
         ).get("issues", [])
@@ -341,6 +341,8 @@ class SemrushClient:
                 )
 
         return {
+            "status": "complete",
+            "project_created": created,
             "project_id": int(project_id),
             "project_name": project.get("project_name", ""),
             "domain": project.get("domain_unicode") or project.get("url") or hostname,
@@ -361,10 +363,71 @@ class SemrushClient:
             "findings": findings,
         }
 
-    def _find_project(self, hostname: str, preferred_project_id: str) -> dict:
-        projects = self._project_json(self.PROJECTS_URL)
+    def _ensure_site_audit(self, target_url, preferred_project_id, page_limit, wait_seconds):
+        if not self.api_key:
+            raise SiteAuditError('missing_key', 'Semrush API key is not configured.')
+        hostname = _normalize_domain(target_url)
+        project = self._find_project(hostname, preferred_project_id, target_url)
+        created = not project
+        if created:
+            project = self._project_json(self.PROJECTS_URL, method='POST', body={
+                'url': hostname, 'project_name': _site_audit_project_name(target_url),
+            }, operation='Create project')
+            if not project.get('project_id'):
+                raise SiteAuditError('invalid_response', 'Semrush created no identifiable project; setup stopped.')
+        project_id = str(project['project_id'])
+        base = f'{self.PROJECT_REPORTS_URL}/{project_id}/siteaudit'
+        info = self._project_json(base + '/info', ignore_not_found=True, operation='Read campaign')
+        if not isinstance(info, dict):
+            raise SiteAuditError('invalid_response', 'Semrush returned an invalid campaign response.')
+        if not info:
+            # Only configure a missing campaign. Never overwrite a staff-configured campaign.
+            parts = urlsplit(target_url)
+            self._project_json(f'{self.PROJECTS_URL}/{project_id}/siteaudit/enable', method='POST', body={
+                'domain': parts.netloc + parts.path,
+                'pageLimit': max(1, min(int(page_limit or 100), 100000)),
+                'scheduleDay': 0, 'notify': False, 'crawlSubdomains': False,
+                'respectCrawlDelay': True, 'userAgentType': 7,
+            }, operation='Enable Site Audit')
+            info = self._project_json(base + '/info', operation='Read campaign')
+        snapshots = self._project_json(base + '/snapshots', operation='List completed audits').get('snapshots')
+        if not isinstance(snapshots, list):
+            raise SiteAuditError('invalid_response', 'Semrush did not return a valid completed-audit list.')
+        completed = [s for s in snapshots if s.get('snapshot_id') and s.get('finish_date')]
+        active = {'RUNNING', 'CHECKING', 'SAVING'}
+        launched_id = None
+        if not completed and str(info.get('status', '')).upper() not in active:
+            launched = self._project_json(base + '/launch', method='POST', operation='Launch Site Audit')
+            launched_id = launched.get('snapshot_id')
+            if not launched_id:
+                raise SiteAuditError('invalid_response', f'Semrush project {project_id}: launch returned no audit ID; it was not retried.')
+        deadline = time.monotonic() + wait_seconds
+        while not completed:
+            if time.monotonic() >= deadline:
+                raise SiteAuditError('in_progress', f'Semrush project {project_id} audit is still pending after the wait limit. No completed results were imported.')
+            time.sleep(min(30, max(0, deadline - time.monotonic())))
+            info = self._project_json(base + '/info', operation='Check crawl progress')
+            status = str(info.get('status', '')).upper()
+            if status in {'FAILED', 'ERROR', 'CANCELLED', 'STOPPED'}:
+                raise SiteAuditError('crawl_failed', f'Semrush project {project_id} crawl ended with status {status}.')
+            if status == 'FINISHED':
+                snapshots = self._project_json(base + '/snapshots', operation='List completed audits').get('snapshots', [])
+                completed = [s for s in snapshots if s.get('snapshot_id') and s.get('finish_date')
+                             and (not launched_id or str(s['snapshot_id']) == str(launched_id))]
+                if not completed and _to_int(info.get('last_failed_audit')) > _to_int(info.get('last_audit')):
+                    raise SiteAuditError('crawl_failed', f'Semrush project {project_id} reports a failed crawl with no completed results.')
+        latest = max(completed, key=lambda s: _to_int(s.get('finish_date')))
+        snapshot = self._project_json(base + '/snapshot', params={'snapshot_id': latest['snapshot_id']}, operation='Read audit snapshot')
+        if not isinstance(snapshot, dict) or not snapshot.get('snapshot_id'):
+            raise SiteAuditError('invalid_response', 'Semrush returned an invalid audit snapshot.')
+        if _to_int(snapshot.get('pages_crawled')) == 0:
+            raise SiteAuditError('crawl_empty', f"Semrush project {project_id} finished with zero pages crawled (blocked: {_to_int(info.get('blocked'))}). No usable Semrush crawl evidence was returned.")
+        return project, info, snapshot, created
+
+    def _find_project(self, hostname: str, preferred_project_id: str, target_url: str = "") -> dict:
+        projects = self._project_json(self.PROJECTS_URL, params={"filter": "all"}, operation="List projects")
         if not isinstance(projects, list):
-            return {}
+            raise SiteAuditError("invalid_response", "Semrush did not return a valid project list; no project was created.")
         if preferred_project_id:
             preferred = next(
                 (
@@ -374,8 +437,11 @@ class SemrushClient:
                 ),
                 None,
             )
-            if preferred:
-                return preferred
+            if not preferred:
+                raise SiteAuditError("project_not_accessible", f"Configured Semrush project {preferred_project_id} is not accessible to this API key.")
+            if _normalize_domain(preferred.get('domain_unicode') or preferred.get('url') or '') != hostname:
+                raise SiteAuditError("domain_mismatch", f"Configured Semrush project {preferred_project_id} belongs to a different domain.")
+            return preferred
         matches = [
             item
             for item in projects
@@ -384,26 +450,43 @@ class SemrushClient:
             )
             == hostname
         ]
-        return matches[0] if matches else {}
+        name = _site_audit_project_name(target_url or hostname)
+        exact = next((p for p in matches if p.get('project_name') == name), None)
+        # Automatically created subfolder projects must not be reused for a
+        # different community on the same domain.
+        existing = [p for p in matches if not p.get('project_name', '').startswith('SEO Audit - ')]
+        return exact or (existing[0] if existing else {})
 
-    def _project_json(
-        self,
-        url: str,
-        ignore_not_found: bool = False,
-    ) -> dict | list:
+    def _project_json(self, url, ignore_not_found=False, *, method="GET", body=None, params=None, operation="Read Site Audit"):
+        request_params = {"key": self.api_key, **(params or {})}
         try:
-            response = requests.get(
-                url,
-                params={"key": self.api_key},
-                timeout=60,
-            )
-            if ignore_not_found and response.status_code == 404:
-                return {}
-            response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.RequestException, ValueError) as exc:
-            self._diagnostic(f"Semrush project request failed: {exc}")
+            if method == "GET":
+                response = requests.get(url, params=request_params, timeout=60)
+            else:
+                response = requests.post(url, params=request_params, json=body, timeout=60)
+        except requests.exceptions.RequestException as exc:
+            # Do not repeat a write after an ambiguous timeout: the server may
+            # have accepted it. Next run discovers the existing project/crawl.
+            raise SiteAuditError("network_error", f"{operation}: Semrush request failed ({type(exc).__name__}). No automatic duplicate request was sent.") from None
+        if ignore_not_found and response.status_code == 404:
             return {}
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        error_body = isinstance(payload, dict) and (payload.get('error') or payload.get('success') is False)
+        if response.status_code >= 400 or error_body or response.text.lstrip().startswith('ERROR'):
+            detail = str(payload if payload is not None else response.text)
+            if self.api_key:
+                detail = detail.replace(self.api_key, '[REDACTED]')
+            detail = re.sub(r"([?&]key=)[^&\s]+", r"\1[REDACTED]", detail)[:350]
+            code = {401: 'authentication', 403: 'access_denied', 429: 'rate_limit', 402: 'quota'}.get(response.status_code, 'api_error')
+            raise SiteAuditError(code, f"{operation}: Semrush HTTP {response.status_code}: {detail}")
+        if payload is None:
+            if method == 'POST' and not response.text.strip():
+                return {}
+            raise SiteAuditError('invalid_response', f'{operation}: Semrush returned invalid JSON.')
+        return payload
 
     def _site_audit_issue_rows(
         self,
@@ -419,9 +502,11 @@ class SemrushClient:
                 f"snapshot/{snapshot_id}/issue/{issue_id}"
                 f"?page={page}&limit=1000"
             )
-            if not isinstance(payload, dict):
-                break
-            batch = payload.get("data") or []
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list) or "total" not in payload:
+                raise SiteAuditError("invalid_response", f"Semrush issue {issue_id}: incomplete detail response; findings were not reported as complete.")
+            batch = payload["data"]
+            if not batch and len(rows) < _to_int(payload.get("total")):
+                raise SiteAuditError("incomplete_results", f"Semrush issue {issue_id}: pagination stopped before all affected URLs were returned.")
             rows.extend(item for item in batch if isinstance(item, dict))
             if len(rows) >= _to_int(payload.get("total")) or not batch:
                 break
@@ -452,7 +537,9 @@ def _keyword_difficulty(row: dict) -> float:
 
 
 def _normalize_domain(value: str) -> str:
-    return value.strip().lower().removeprefix("www.").rstrip(".")
+    value = value.strip().lower()
+    hostname = urlsplit(value if "://" in value else "//" + value).hostname or ""
+    return hostname.removeprefix("www.").rstrip(".")
 
 
 def _url_in_scope(candidate: str, target_url: str) -> bool:
@@ -489,3 +576,10 @@ if __name__ == "__main__":
     # print(s.get_keyword_data(["apartments in dallas"]))
     pass
 
+
+
+def _site_audit_project_name(target_url):
+    hostname = _normalize_domain(target_url)
+    path = urlsplit(target_url).path.rstrip('/') if '://' in target_url else ''
+    suffix = ' - ' + hashlib.sha256(path.encode()).hexdigest()[:10] if path else ''
+    return f'SEO Audit - {hostname}{suffix}'

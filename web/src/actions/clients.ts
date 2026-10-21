@@ -39,5 +39,5 @@ export async function createClient(formData: FormData) {
     throw new Error("The client could not be created.");
   }
 
-  redirect(`/clients/${data.id}`);
+  redirect(`/clients/${data.id}/intake`);
 }

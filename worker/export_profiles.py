@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 from datetime import date
 from typing import Any, Iterable
 
@@ -276,6 +277,8 @@ def build_client_workbook(
     recap_lines: list[str] | None = None,
     report_variant: str = "full_client",
     include_supplemental: bool = False,
+    technical_evidence: list[list] | None = None,
+    technical_coverage: list[list] | None = None,
 ) -> Workbook:
     """Build the multi-sheet client report workbook.
 
@@ -300,9 +303,9 @@ def build_client_workbook(
                     row.get("keyword", ""),
                     row.get("position") or "-",
                     (row.get("intent") or "commercial")[:1],
-                    row.get("cpc") or "n/a",
-                    row.get("volume") or "n/a",
-                    row.get("difficulty") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("cpc") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("volume") or "n/a",
+                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("difficulty") or "n/a",
                     row.get("assigned_page", ""),
                 ]
                 for row in keywords
@@ -491,6 +494,8 @@ def build_client_workbook(
                 "Occurrences",
                 "Example Location",
                 "Recommendation",
+                "Severity",
+                "Shared pattern / scope",
             ],
             [
                 [
@@ -500,11 +505,32 @@ def build_client_workbook(
                     row.get("occurrences", 1),
                     row.get("example_url", ""),
                     row.get("recommendation", ""),
+                    row.get("severity", ""),
+                    row.get("pattern", ""),
                 ]
                 for row in technical_rows
             ],
         )
         sections.append("Technical SEO")
+        technical.cell(row=3, column=1, value="Prioritize verified impact. Technical Evidence contains every affected URL; Technical Coverage lists limits.")
+        technical.auto_filter.ref = f"A5:H{5 + len(technical_rows)}"
+        _fit_technical_sheet(technical, [18, 36, 65, 14, 60, 80, 14, 50])
+
+    if technical_evidence:
+        evidence = workbook.create_sheet("Technical Evidence")
+        _sheet_title(evidence, property_name, "Affected URLs and Source Evidence")
+        evidence.cell(row=3, column=1, value="All affected URLs retained. Large evidence values continue in numbered rows. Redirect targets are recorded next hops, not verified final destinations.")
+        _table(evidence, ["Finding ID", "Issue", "Affected URL", "Evidence field / part", "Recorded evidence", "Source"], technical_evidence)
+        evidence.auto_filter.ref = f"A5:F{5 + len(technical_evidence)}"
+        _fit_technical_sheet(evidence, [38, 36, 60, 35, 100, 40])
+        sections.append("Technical Evidence")
+    if technical_coverage:
+        coverage = workbook.create_sheet("Technical Coverage")
+        _sheet_title(coverage, property_name, "Evidence Coverage and Follow-up Checks")
+        coverage.cell(row=3, column=1, value="Not assessed does not mean passed. Follow-up checks are not confirmed defects.")
+        _table(coverage, ["Area", "Coverage", "Evidence / limitation", "Next check"], technical_coverage)
+        _fit_technical_sheet(coverage, [30, 55, 70, 70])
+        sections.append("Technical Coverage")
 
     if page_experience and (include_supplemental or report_variant not in {"full_client", "in_house"}):
         speed = workbook.create_sheet("Page Speed")
@@ -564,6 +590,20 @@ def _sheet_title(sheet, property_name: str, section: str) -> None:
         column=1,
         value="These are edits that should be made by your web developer.",
     ).font = Font(italic=True, color="666666")
+
+
+def _fit_technical_sheet(sheet, widths):
+    """Preserve wrapping on hyperlinks and size only the changed technical views."""
+    from openpyxl.utils import get_column_letter
+    for column, width in enumerate(widths, 1):
+        sheet.column_dimensions[get_column_letter(column)].width = width
+    for row in sheet.iter_rows(min_row=5):
+        lines = 1
+        for cell, width in zip(row, widths):
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            lines = max(lines, sum(max(1, math.ceil(len(part) / (width * .85))) for part in str(cell.value or "").split("\n")))
+        sheet.row_dimensions[row[0].row].height = min(409, max(30, lines * 15 + 12))
+    sheet.sheet_view.showGridLines = False
 
 
 def _table(sheet, headers: list[str], rows: list[list[Any]], start_row: int = 5) -> None:

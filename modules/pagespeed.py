@@ -63,55 +63,7 @@ class PageSpeedClient:
         if not isinstance(lighthouse, dict):
             raise PageSpeedError(f"PageSpeed returned no Lighthouse result for {url}")
 
-        categories = lighthouse.get("categories", {})
-        audits = lighthouse.get("audits", {})
-
-        def score(category: str) -> int | None:
-            value = categories.get(category, {}).get("score")
-            return round(value * 100) if isinstance(value, (int, float)) else None
-
-        metrics = {}
-        for key, label in {
-            "first-contentful-paint": "first_contentful_paint",
-            "largest-contentful-paint": "largest_contentful_paint",
-            "total-blocking-time": "total_blocking_time",
-            "cumulative-layout-shift": "cumulative_layout_shift",
-            "speed-index": "speed_index",
-        }.items():
-            audit = audits.get(key, {})
-            metrics[label] = {
-                "display_value": audit.get("displayValue"),
-                "numeric_value": audit.get("numericValue"),
-                "score": audit.get("score"),
-            }
-
-        accessibility_issues = []
-        accessibility_refs = categories.get("accessibility", {}).get("auditRefs", [])
-        for ref in accessibility_refs:
-            audit = audits.get(ref.get("id"), {})
-            audit_score = audit.get("score")
-            if audit.get("scoreDisplayMode") == "notApplicable" or audit_score in (1, None):
-                continue
-            accessibility_issues.append(
-                {
-                    "id": ref.get("id"),
-                    "title": audit.get("title"),
-                    "description": audit.get("description"),
-                    "score": audit_score,
-                    "details": audit.get("details", {}),
-                }
-            )
-
-        return {
-            "url": url,
-            "strategy": strategy,
-            "fetch_time": lighthouse.get("fetchTime"),
-            "final_url": lighthouse.get("finalDisplayedUrl", url),
-            "performance_score": score("performance"),
-            "accessibility_score": score("accessibility"),
-            "metrics": metrics,
-            "accessibility_issues": accessibility_issues,
-        }
+        return parse_lighthouse_result(url, lighthouse, strategy=strategy)
 
     def analyze_urls(
         self,
@@ -132,3 +84,82 @@ class PageSpeedClient:
             if len(results) >= limit:
                 break
         return results
+
+
+def parse_lighthouse_result(
+    url: str,
+    lighthouse: dict[str, Any],
+    *,
+    strategy: str = "mobile",
+    source: str = "pagespeed_insights",
+) -> dict[str, Any]:
+    """Normalize either PageSpeed API or local Lighthouse lab evidence."""
+    if lighthouse.get("runtimeError"):
+        raise PageSpeedError(f"Lighthouse failed for {url}: {lighthouse['runtimeError']}")
+
+    categories = lighthouse.get("categories", {})
+    audits = lighthouse.get("audits", {})
+
+    def score(category: str) -> int | None:
+        value = categories.get(category, {}).get("score")
+        return round(value * 100) if isinstance(value, (int, float)) else None
+
+    metrics = {}
+    for key, label in {
+        "first-contentful-paint": "first_contentful_paint",
+        "largest-contentful-paint": "largest_contentful_paint",
+        "total-blocking-time": "total_blocking_time",
+        "cumulative-layout-shift": "cumulative_layout_shift",
+        "speed-index": "speed_index",
+    }.items():
+        audit = audits.get(key, {})
+        metrics[label] = {
+            "display_value": audit.get("displayValue"),
+            "numeric_value": audit.get("numericValue"),
+            "score": audit.get("score"),
+        }
+
+    accessibility_issues = []
+    accessibility_refs = categories.get("accessibility", {}).get("auditRefs", [])
+    for ref in accessibility_refs:
+        audit = audits.get(ref.get("id"), {})
+        audit_score = audit.get("score")
+        if audit.get("scoreDisplayMode") == "notApplicable" or audit_score in (1, None):
+            continue
+        accessibility_issues.append(
+            {
+                "id": ref.get("id"),
+                "title": audit.get("title"),
+                "description": audit.get("description"),
+                "score": audit_score,
+                "details": audit.get("details", {}),
+            }
+        )
+
+    performance_issues = []
+    performance_ids = {ref.get("id") for ref in categories.get("performance", {}).get("auditRefs", [])}
+    for key, audit in audits.items():
+        if key not in performance_ids or audit.get("score") is None or audit.get("score") == 1:
+            continue
+        if audit.get("scoreDisplayMode") in {"notApplicable", "manual", "error"}:
+            continue
+        if not audit.get("details", {}).get("items"):
+            continue
+        performance_issues.append({"id": key, "title": audit.get("title", key),
+                                   "description": audit.get("description", ""),
+                                   "display_value": audit.get("displayValue", ""),
+                                   "score": audit.get("score"), "details": audit["details"]})
+
+    return {
+        "url": url,
+        "strategy": strategy,
+        "source": source,
+        "lighthouse_version": lighthouse.get("lighthouseVersion"),
+        "fetch_time": lighthouse.get("fetchTime"),
+        "final_url": lighthouse.get("finalDisplayedUrl", url),
+        "performance_score": score("performance"),
+        "accessibility_score": score("accessibility"),
+        "metrics": metrics,
+        "accessibility_issues": accessibility_issues,
+        "performance_issues": performance_issues,
+    }

@@ -26,6 +26,8 @@ export async function queueAudit(
   const rawCompetitors = String(
     formData.get("competitors") ?? formData.get("competitorDomains") ?? "",
   ).trim();
+  const additionalInstructions = String(formData.get("additionalInstructions") ?? "").trim();
+  if (additionalInstructions.length > 6000) return { error: "Additional instructions must be 6,000 characters or fewer." };
   const pageLimit = Number(formData.get("pageLimit"));
   const reportVariant = String(formData.get("reportVariant") ?? "full_client");
   const crawlSource = String(formData.get("crawlSource") ?? "cloud");
@@ -127,16 +129,19 @@ export async function queueAudit(
     return { error: "Your session expired. Sign in and try again." };
   }
 
+  const selectedClientId = String(formData.get("clientId") ?? "").trim();
+  if (selectedClientId && !/^[0-9a-f-]{36}$/i.test(selectedClientId)) return { error: "Choose a valid client." };
   const { data: existingClient, error: lookupError } = await supabase
     .from("clients")
     .select("id")
-    .eq("name_key", clientName.toLowerCase())
+    .eq(selectedClientId ? "id" : "name_key", selectedClientId || clientName.toLowerCase())
     .limit(1)
     .maybeSingle();
   if (lookupError) {
     return { error: "The client could not be checked. Please try again." };
   }
 
+  if (selectedClientId && !existingClient) return { error: "The selected client is unavailable." };
   let clientId = existingClient?.id;
   if (!clientId) {
     const { data: createdClient, error: clientError } = await supabase
@@ -166,6 +171,7 @@ export async function queueAudit(
       run_performance: formData.get("runPerformance") === "on",
       run_accessibility: formData.get("runAccessibility") === "on",
       options: {
+        additional_instructions: additionalInstructions,
         competitor_domains: competitors.domains,
         competitor_names: competitors.names,
         report_variant: reportVariant,

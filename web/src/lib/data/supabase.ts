@@ -17,6 +17,7 @@ import type {
 } from "./types";
 
 type ClientRow = {
+  intake?: { main_contact?: string; onboarding?: Client["onboarding"] };
   id: string;
   name: string;
   website_url: string;
@@ -50,6 +51,7 @@ type FindingRow = {
   page_url: string | null;
   resource_url: string | null;
   recommendation: string;
+  description: string;
 };
 
 type TaskRow = {
@@ -125,11 +127,6 @@ function auditStatus(row: AuditRow): AuditStatus {
   return "queued";
 }
 
-function scoreFromSummary(summary: AuditSummary | null): number | null {
-  const value = summary?.score;
-  return typeof value === "number" ? value : null;
-}
-
 function pagesFromSummary(
   summary: AuditSummary | null,
   fallback: number,
@@ -145,7 +142,7 @@ function mapAudit(row: AuditRow): Audit {
     clientName: row.clients?.name ?? "Client",
     url: row.target_url,
     status: auditStatus(row),
-    score: scoreFromSummary(row.summary),
+    score: null,
     pages: pagesFromSummary(row.summary, row.page_limit),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -157,6 +154,8 @@ function mapAudit(row: AuditRow): Audit {
 
 function mapCategory(category: string): Finding["category"] {
   const normalized = category.toLowerCase();
+  if (normalized === "account_lead") return "Account lead";
+  if (normalized === "technical") return "Technical";
   if (normalized.includes("metadata")) return "Metadata";
   if (normalized.includes("content") || normalized.includes("heading")) {
     return "Content";
@@ -188,7 +187,7 @@ export const supabaseData: DataProvider = {
     const supabase = await createSupabaseServerClient();
     const { data, error } = await supabase
       .from("clients")
-      .select("id,name,website_url,notes,audits(id,status)")
+      .select("id,name,website_url,notes,intake,audits(id,status)")
       .order("created_at", { ascending: false });
     if (error) throw error;
 
@@ -197,7 +196,8 @@ export const supabaseData: DataProvider = {
       name: row.name,
       website: row.website_url,
       location: row.notes ?? "",
-      contact: "",
+      contact: row.intake?.main_contact ?? "",
+      onboarding: row.intake?.onboarding,
       activeAudits:
         row.audits?.filter((audit) =>
           ["queued", "running"].includes(audit.status),
@@ -235,9 +235,10 @@ export const supabaseData: DataProvider = {
       const { data, error } = await supabase
         .from("findings")
         .select(
-          "id,category,rule_key,severity,status,title,page_url,resource_url,recommendation",
+          "id,category,rule_key,severity,status,title,description,page_url,resource_url,recommendation",
         )
         .eq("audit_id", auditId)
+        .or("metadata->>report_hidden.is.null,metadata->>report_hidden.neq.true")
         .order("severity")
         .order("id")
         .range(from, from + batchSize - 1);
@@ -258,6 +259,7 @@ export const supabaseData: DataProvider = {
       pageUrl: row.page_url ?? "",
       resourceUrl: row.resource_url ?? undefined,
       recommendation: row.recommendation,
+      description: row.description,
     }));
   },
 

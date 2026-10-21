@@ -115,6 +115,7 @@ class ArtifactStore:
         paths = [
             *Path(crawl_dir).glob("*.csv"),
             *Path(crawl_dir).glob("*.seospider"),
+            *Path(crawl_dir).glob("crawl_attempts.json"),
         ]
         for path in sorted(paths):
             if path.stat().st_size <= 49 * 1024 * 1024:

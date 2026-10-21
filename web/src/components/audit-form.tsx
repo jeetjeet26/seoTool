@@ -7,10 +7,10 @@ import { uploadCrawlFiles } from "@/lib/crawl-import-client";
 
 const initialState: QueueAuditState = {};
 
-export function AuditForm() {
+export function AuditForm({ initial }: { initial?: { clientId: string; name: string; url: string; vertical?: string; competitors?: string } }) {
   const [state, action, pending] = useActionState(queueAudit, initialState);
   const [crawlSource, setCrawlSource] = useState("cloud");
-  const [communityType, setCommunityType] = useState("multifamily");
+  const [communityType, setCommunityType] = useState(initial?.vertical || "multifamily");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
@@ -40,6 +40,7 @@ export function AuditForm() {
 
   return (
     <form className="form-card" action={action}>
+      {initial && <input type="hidden" name="clientId" value={initial.clientId}/>}
       <input type="hidden" name="hasLocalUpload" value={files.length ? "yes" : "no"} />
       {state.message && <div className="notice success" role="status"><strong>{state.auditId ? "Audit created." : "Audit queued."}</strong><span>{state.message}</span></div>}
       {state.error && <div className="notice" role="alert"><strong>Unable to queue audit.</strong><span>{state.error}</span></div>}
@@ -47,8 +48,8 @@ export function AuditForm() {
       <div className="form-section">
         <div><span className="step-number">1</span><h2>Target</h2><p>Enter the client and starting URL.</p></div>
         <div className="fields">
-          <label>Client name<input name="clientName" required autoComplete="organization" placeholder="Client or property name" /></label>
-          <label>Website URL<input name="targetUrl" type="url" required placeholder="https://example.com" /></label>
+          <label>Client name<input name="clientName" defaultValue={initial?.name} readOnly={Boolean(initial)} required autoComplete="organization" placeholder="Client or property name" /></label>
+          <label>Website URL<input name="targetUrl" defaultValue={initial?.url} type="url" required placeholder="https://example.com" /></label>
           <div className="field-row"><label>Primary city<input name="targetCity" required placeholder="Walnut" /></label><label>State or region<input name="targetRegion" placeholder="California" maxLength={160} /></label></div>
           <label>Metro or secondary market <span className="label-hint">Optional</span><input name="secondaryMarket" placeholder="Los Angeles" maxLength={160} /></label>
           <label>
@@ -66,6 +67,7 @@ export function AuditForm() {
             Competitors <span className="label-hint">Optional · community name or domain · one per line · maximum 10</span>
             <textarea
               name="competitors"
+              defaultValue={initial?.competitors}
               rows={4}
               maxLength={2000}
               placeholder={"Sella by Lennar\ncompetitor-two.com"}
@@ -134,6 +136,10 @@ export function AuditForm() {
               <option value="event_details">Include /event/ pages in errors, titles, and copy</option>
               <option value="full_audit">Include every event and calendar URL</option>
             </select>
+          </label>
+          <label>Additional AI context and instructions <span>Optional</span>
+            <textarea name="additionalInstructions" rows={5} maxLength={6000} placeholder="For example: Focus the copy on our renovated two-bedroom homes. Use a welcoming tone and avoid the phrase resort-style." />
+            <small>Applies to this audit’s AI-generated titles, descriptions, headings, page copy, and alt text. It does not change measured crawl findings or keyword metrics. Up to 6,000 characters.</small>
           </label>
           <details>
             <summary>Optional PageSpeed and accessibility checks</summary>

@@ -30,7 +30,6 @@ export default async function AuditsPage() {
                   <th>Client</th>
                   <th>Status</th>
                   <th>Pages</th>
-                  <th>Score</th>
                   <th>Created</th>
                   <th>
                     <span className="sr-only">Open</span>
@@ -48,7 +47,6 @@ export default async function AuditsPage() {
                       <Status value={audit.status} />
                     </td>
                     <td>{audit.pages}</td>
-                    <td>{audit.score ?? "—"}</td>
                     <td>{formatDate(audit.createdAt)}</td>
                     <td>
                       <Link

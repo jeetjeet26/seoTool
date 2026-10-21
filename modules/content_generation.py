@@ -109,8 +109,17 @@ class ContentGenerator:
                 system_prompt, attempt_prompt, max_tokens=6000
             )
             parsed = _parse_json_array(response)
-            if parsed is not None:
+            if parsed is not None and _complete_page_results(parsed, len(chunk)):
                 break
+            parsed = None
+        if parsed is None and len(chunk) > 1:
+            # Long/malformed responses must not strand an entire batch. Retry
+            # smaller groups, ending at a bounded two attempts per single page.
+            midpoint = len(chunk) // 2
+            return [
+                *self._generate_chunk(chunk[:midpoint], mode, client_context),
+                *self._generate_chunk(chunk[midpoint:], mode, client_context),
+            ]
         if parsed is None:
             return [
                 self._item_result(page, {}, mode, error="generation_failed")
@@ -371,6 +380,21 @@ Return ONLY a JSON array. One object per page with keys:
             if on_progress:
                 on_progress(position + 1, total)
         return results
+
+
+def _complete_page_results(entries: list[dict], count: int) -> bool:
+    if len(entries) != count or any(not isinstance(entry, dict) for entry in entries):
+        return False
+    indices = [entry.get("index") for entry in entries]
+    return (
+        all(type(index) is int for index in indices)
+        and set(indices) == set(range(1, count + 1))
+        and all(
+            isinstance(entry.get(key), str)
+            for entry in entries
+            for key in ("title", "meta_description", "h1")
+        )
+    )
 
 
 def validate_metadata(title: str, description: str) -> list[str]:

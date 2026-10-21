@@ -292,6 +292,8 @@ def _finding_title(issue_type: str) -> str:
 
 
 def _finding_description(finding: Finding) -> str:
+    if finding.metadata.get("report_description"):
+        return finding.metadata["report_description"]
     location = finding.page_url or finding.resource_url or "the crawled site"
     return f"{_finding_title(finding.issue_type)} detected at {location}."
 

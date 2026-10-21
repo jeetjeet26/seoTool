@@ -34,7 +34,7 @@ export interface PageExperience {
 
 export interface KeywordStrategyItem {
   keyword: string;
-  source: "approved" | "ranking" | "related" | "seed";
+  source: "approved" | "ranking" | "related" | "seed" | "analyst_provided_metrics_pending";
   volume: number;
   cpc: number;
   difficulty: number;
@@ -97,6 +97,12 @@ export interface SiteInventorySummary {
 }
 
 export interface AuditSummary {
+  recommendation_progress?: {
+    previous_audit_id?: string;
+    items: Array<{ url: string; image_url?: string; field: string; status: "implemented" | "not_implemented" | "not_verified"; reason: string }>;
+  };
+  executive_summary?: string;
+  report_edit?: { revision: string; export_state: "pending" | "ready" | "failed"; export_attempts?: number };
   score?: number;
   normalization_status?: "complete" | "incomplete";
   pages_scanned?: number;
@@ -161,6 +167,7 @@ export interface AuditSummary {
 }
 
 export interface Client {
+  onboarding?: import("@/lib/onboarding").Onboarding;
   id: string;
   name: string;
   website: string;
@@ -193,7 +200,9 @@ export interface Finding {
     | "Links"
     | "Performance"
     | "Accessibility"
-    | "Security";
+    | "Security"
+    | "Technical"
+    | "Account lead";
   severity: "Critical" | "High" | "Medium" | "Low" | "Info";
   title: string;
   occurrences: number;
@@ -202,6 +211,7 @@ export interface Finding {
   pageUrl: string;
   resourceUrl?: string;
   recommendation: string;
+  description?: string;
 }
 
 export interface Task {

@@ -1,15 +1,16 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { saveClientIntake } from "@/actions/tools";
+import { OnboardingForm } from "@/components/onboarding-form";
+import type { Onboarding } from "@/lib/onboarding";
 import { PageHeader } from "@/components/app-shell";
 import { isSupabaseConfigured } from "@/lib/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export const metadata = { title: "Client intake" };
+export const metadata = { title: "SEO onboarding" };
 export const dynamic = "force-dynamic";
 
 type Intake = {
+  onboarding?: Onboarding;
   developer_contact?: string;
   main_contact?: string;
   goals?: string;
@@ -30,9 +31,10 @@ type Intake = {
 };
 
 export default async function ClientIntakePage({
-  params,
+  params, searchParams,
 }: {
   params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ saved?: string }>;
 }) {
   const { clientId } = await params;
   if (!isSupabaseConfigured) notFound();
@@ -40,7 +42,7 @@ export default async function ClientIntakePage({
   const supabase = await createSupabaseServerClient();
   const { data: client, error } = await supabase
     .from("clients")
-    .select("id,name,intake")
+    .select("id,name,intake,updated_at")
     .eq("id", clientId)
     .maybeSingle();
   if (error || !client) notFound();
@@ -54,15 +56,14 @@ export default async function ClientIntakePage({
   return (
     <div className="narrow-page">
       <PageHeader
-        eyebrow="Client intake"
-        title={`${client.name} questionnaire`}
-        description="These answers become the approved facts used by crawls, AI generation, and the local listing checklist."
+        eyebrow="SEO onboarding"
+        title={`${client.name} onboarding`}
+        description="Follow the SEO process from platform feasibility through discovery, access, audit approval, and the monthly handoff."
       />
-      <form className="form-card" action={saveClientIntake}>
-        <input type="hidden" name="clientId" value={client.id} />
+      <OnboardingForm clientId={client.id} updatedAt={client.updated_at} initial={intake.onboarding} saved={(await searchParams).saved === "1"}>
         <div className="form-section">
           <div>
-            <span className="step-number">1</span>
+
             <h2>Contacts and goals</h2>
             <p>Who implements changes and what success looks like.</p>
           </div>
@@ -87,7 +88,7 @@ export default async function ClientIntakePage({
         </div>
         <div className="form-section">
           <div>
-            <span className="step-number">2</span>
+
             <h2>Market and positioning</h2>
             <p>What to target and, just as important, what to avoid.</p>
           </div>
@@ -116,7 +117,7 @@ export default async function ClientIntakePage({
         </div>
         <div className="form-section">
           <div>
-            <span className="step-number">3</span>
+
             <h2>Property updates</h2>
             <p>Facts content writers may reference.</p>
           </div>
@@ -141,7 +142,7 @@ export default async function ClientIntakePage({
         </div>
         <div className="form-section">
           <div>
-            <span className="step-number">4</span>
+
             <h2>SEO report rules</h2>
             <p>Stable property context and writing rules used on every rerun.</p>
           </div>
@@ -180,7 +181,7 @@ export default async function ClientIntakePage({
         </div>
         <div className="form-section">
           <div>
-            <span className="step-number">5</span>
+
             <h2>NAP for local listings</h2>
             <p>The exact name, address, and phone every listing must match.</p>
           </div>
@@ -205,15 +206,7 @@ export default async function ClientIntakePage({
             </div>
           </div>
         </div>
-        <div className="form-actions">
-          <Link className="button secondary" href={`/clients/${client.id}`}>
-            Cancel
-          </Link>
-          <button className="button primary" type="submit">
-            Save intake
-          </button>
-        </div>
-      </form>
+      </OnboardingForm>
     </div>
   );
 }

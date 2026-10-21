@@ -4,7 +4,8 @@ import { isSupabaseConfigured } from "@/lib/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function csvCell(value: unknown): string {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[=+@\-\t\r\n]/.test(raw.trimStart()) ? `'${raw}` : raw;
   return `"${text.replaceAll('"', '""')}"`;
 }
 
@@ -61,13 +62,21 @@ export async function GET(
 
 async function loadRows(auditId: string) {
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("findings")
-    .select(
-      "severity,category,title,page_url,resource_url,recommendation",
-    )
-    .eq("audit_id", auditId)
-    .order("severity");
-  if (error) return null;
-  return data;
+  const rows: Array<{
+    severity: string; category: string; title: string;
+    page_url: string | null; resource_url: string | null; recommendation: string;
+  }> = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from("findings")
+      .select("severity,category,title,page_url,resource_url,recommendation")
+      .eq("audit_id", auditId)
+      .or("metadata->>report_hidden.is.null,metadata->>report_hidden.neq.true")
+      .order("severity")
+      .order("id")
+      .range(offset, offset + 999);
+    if (error) return null;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) return rows;
+  }
 }

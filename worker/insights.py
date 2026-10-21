@@ -26,7 +26,7 @@ from modules.keyword_strategy import build_keyword_strategy, seed_phrases
 from modules.models import Finding, Severity
 from modules.page_content import fetch_body_copy_for_pages
 from modules.pagespeed import PageSpeedClient
-from modules.semrush import SemrushClient
+from modules.semrush import SemrushClient, SiteAuditError
 from modules.site_inventory import (
     build_site_inventory,
     calendar_pages_are_technical_only,
@@ -113,9 +113,9 @@ class InsightRunner:
                 {
                     "service": "screaming_frog",
                     "message": (
-                        "Screaming Frog was blocked by the target site. "
+                        "Screaming Frog returned no usable pages. "
                         f"Browser-style fallback analyzed {len(inventory.pages)} pages; "
-                        "Semrush supplies technical issue evidence."
+                        "technical findings are limited to the available HTML evidence."
                     ),
                 }
             )
@@ -130,6 +130,9 @@ class InsightRunner:
                 "pages": len(inventory.pages),
                 "scope": "sitemap_only" if sitemap_only else "full_crawl",
             }
+        attempts_path = Path(crawl_dir) / "crawl_attempts.json"
+        if attempts_path.exists():
+            result["crawl_coverage"]["crawler_attempts"] = json.loads(attempts_path.read_text())
         calendar_technical_only = calendar_pages_are_technical_only(
             job.target_url,
             job.options,
@@ -279,24 +282,6 @@ class InsightRunner:
                     provided_domains,
                 )
             result["backlinks"] = self.semrush.get_backlinks_overview(domain)
-            site_audit = self.semrush.get_site_audit(
-                job.target_url,
-                str(intake.get("semrush_project_id") or ""),
-            )
-            if site_audit:
-                raw_site_findings = site_audit.pop("findings", [])
-                result["semrush_site_audit"] = site_audit
-                result["_semrush_findings"] = _semrush_findings(raw_site_findings)
-            else:
-                result["enrichment_errors"].append(
-                    {
-                        "service": "semrush_site_audit",
-                        "message": (
-                            "No completed Semrush Site Audit project matched this "
-                            "client domain. Organic research is still available."
-                        ),
-                    }
-                )
             primary_seeds = seed_phrases(job.location, property_name, vertical)
             secondary_seeds = [
                 phrase
@@ -318,6 +303,21 @@ class InsightRunner:
                 }
                 for message in self.semrush.consume_diagnostics()
             )
+
+        # Site Audit setup failures must not suppress organic/keyword research.
+        try:
+            site_audit = self.semrush.get_site_audit(
+                job.target_url, str(intake.get("semrush_project_id") or ""),
+                page_limit=job.page_limit,
+            )
+            raw_site_findings = site_audit.pop("findings", [])
+            result["semrush_site_audit"] = site_audit
+            result["_semrush_findings"] = _semrush_findings(raw_site_findings)
+        except SiteAuditError as exc:
+            result["semrush_site_audit"] = {"status": exc.code, "message": str(exc)}
+            result["enrichment_errors"].append({"service": "Semrush Site Audit: ", "code": exc.code, "message": str(exc)})
+        except Exception as exc:  # Preserve other enrichment if the provider changes its schema.
+            result["enrichment_errors"].append(_safe_error("Semrush Site Audit", exc))
 
         approved_targets = list(job.approved_keyword_targets)
         if sitemap_only:
@@ -499,6 +499,7 @@ class InsightRunner:
                     if not job.run_performance:
                         page_result.pop("performance_score", None)
                         page_result.pop("metrics", None)
+                        page_result.pop("performance_issues", None)
                     if not job.run_accessibility:
                         page_result.pop("accessibility_score", None)
                         page_result.pop("accessibility_issues", None)

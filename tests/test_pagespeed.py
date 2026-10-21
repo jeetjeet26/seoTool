@@ -1,6 +1,6 @@
 import unittest
 
-from modules.pagespeed import PageSpeedClient, PageSpeedError
+from modules.pagespeed import PageSpeedClient, PageSpeedError, parse_lighthouse_result
 
 
 class FakeResponse:
@@ -27,6 +27,17 @@ class FakeSession:
 
 
 class PageSpeedClientTests(unittest.TestCase):
+    def test_local_lab_evidence_keeps_its_source(self):
+        result = parse_lighthouse_result("https://example.com/", {
+            "lighthouseVersion": "13.5.0", "categories": {"performance": {"score": 0.4}},
+        }, source="local_lighthouse")
+        self.assertEqual(result["source"], "local_lighthouse")
+        self.assertEqual(result["performance_score"], 40)
+
+    def test_runtime_failure_is_not_reported_as_a_successful_measurement(self):
+        with self.assertRaises(PageSpeedError):
+            parse_lighthouse_result("https://example.com/", {"runtimeError": {"code": "NO_FCP"}})
+
     def test_extracts_scores_metrics_and_failed_accessibility_audits(self):
         response = FakeResponse(
             {

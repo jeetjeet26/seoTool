@@ -2,6 +2,10 @@ import subprocess
 import os
 import sys
 import re
+import csv
+import json
+import shutil
+import tempfile
 from urllib.parse import urlparse
 from pathlib import Path
 from modules.url_safety import validate_public_audit_url
@@ -28,6 +32,57 @@ class Crawler:
         self.sf_path = Config.SCREAMING_FROG_PATH
 
     def run_crawl(self, url: str, output_dir: str, allowed_urls=None):
+        """Run the normal crawl, then recover blocked documents once as a browser."""
+        scope = list(allowed_urls) if allowed_urls is not None else None
+        self._run_crawl_once(url, output_dir, allowed_urls=scope)
+        directory = Path(output_dir)
+        initial = self._response_summary(directory)
+        attempts = [{"profile": "default", **initial}]
+        selected = "default"
+        profile = Path(__file__).parent / "crawl_profiles" / "browser.seospiderconfig"
+        if initial["forbidden"] and not initial["rate_limited"]:
+            print("Screaming Frog received HTTP 403; retrying once with the browser profile.")
+            with tempfile.TemporaryDirectory(prefix="browser-retry-", dir=directory.parent) as retry_root:
+                retry_dir = Path(retry_root) / "crawl"
+                try:
+                    self._run_crawl_once(url, str(retry_dir), allowed_urls=scope, profile=profile)
+                    retried = self._response_summary(retry_dir)
+                    attempts.append({"profile": "browser", **retried})
+                    if retried["html_pages"] > initial["html_pages"]:
+                        # Never combine stale filtered exports from the blocked
+                        # crawl with successful retry evidence.
+                        for path in directory.iterdir():
+                            if path.is_file() and path.suffix in {".csv", ".seospider"}:
+                                path.unlink()
+                        for path in retry_dir.iterdir():
+                            if path.is_file():
+                                shutil.move(str(path), str(directory / path.name))
+                        selected = "browser"
+                except CrawlError as exc:
+                    # The original evidence remains available to HTML fallback.
+                    print(f"Browser-profile crawl failed: {exc}")
+                    attempts.append({"profile": "browser", "error": "Crawl failed; original exports retained"})
+        (directory / "crawl_attempts.json").write_text(
+            json.dumps({"selected_profile": selected, "attempts": attempts}), encoding="utf-8"
+        )
+
+    @staticmethod
+    def _response_summary(directory):
+        counts = {"html_pages": 0, "forbidden": 0, "rate_limited": 0}
+        with (Path(directory) / "internal_all.csv").open(encoding="utf-8-sig", newline="") as stream:
+            for row in csv.DictReader(stream):
+                content_type = (row.get("Content Type") or "").lower()
+                status = row.get("Status Code", "")
+                document = not content_type or "html" in content_type
+                if document and status == "403":
+                    counts["forbidden"] += 1
+                if status == "429":
+                    counts["rate_limited"] += 1
+                if "html" in content_type and status.startswith("2"):
+                    counts["html_pages"] += 1
+        return counts
+
+    def _run_crawl_once(self, url: str, output_dir: str, allowed_urls=None, profile=None):
         """
         Executes Screaming Frog in headless mode to crawl the given URL.
         Generates CSV reports in the specified output directory.
@@ -67,6 +122,7 @@ class Crawler:
 
         cmd = [
             self.sf_path,
+            *(["--config", str(profile)] if profile else []),
             *crawl_args,
             "--headless",
             "--save-crawl",
@@ -80,7 +136,8 @@ class Crawler:
                 cmd,
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                timeout=600 if profile else None,
             )
 
             stdout = result.stdout or ""
@@ -137,6 +194,8 @@ class Crawler:
 
             print("Crawl completed successfully.")
             print(stdout)
+        except subprocess.TimeoutExpired as exc:
+            raise CrawlError("Browser-profile crawl exceeded its 10-minute limit") from exc
         except FileNotFoundError:
             raise CrawlError(
                 f"Screaming Frog executable not found at {self.sf_path}"

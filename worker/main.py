@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from modules.technical_findings import enrich_technical_findings, lighthouse_findings
+
 import sys
 
 print("worker.main: module loading", file=sys.stderr, flush=True)
@@ -14,6 +16,7 @@ import threading
 import time
 from collections import Counter
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -196,6 +199,16 @@ def process_job(
                 in {"screaming_frog", "screaming_frog_import"}
                 else []
             )
+            if (insight_data.get("crawl_coverage") or {}).get("mode") == "browser_http_fallback":
+                crawler_findings = [
+                    replace(finding, metadata={**finding.metadata, "source": "browser_http_fallback"})
+                    for finding in service.normalize_findings(
+                        job_dir / "crawl",
+                        page_limit=job.page_limit,
+                        allowed_urls=allowed_urls,
+                        inventory_only=True,
+                    )
+                ]
             if allowed_urls is not None:
                 crawler_findings = _scope_findings(crawler_findings, allowed_urls)
                 semrush_findings = _scope_findings(semrush_findings, allowed_urls)
@@ -244,6 +257,11 @@ def process_job(
                         )
                     },
                 )
+            )
+            combined_findings = enrich_technical_findings(
+                [*combined_findings, *lighthouse_findings(insight_data.get("page_experience") or [])],
+                insight_data,
+                job_dir / "crawl",
             )
             finding_count = repository.upsert_findings(job.id, combined_findings)
             repository.record_progress(

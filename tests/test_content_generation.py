@@ -41,6 +41,24 @@ class FakeAgent:
 
 
 class ContentGenerationTests(unittest.TestCase):
+    def test_failed_multi_page_chunk_recovers_with_smaller_groups(self):
+        agent = FakeAgent(responses=["truncated JSON", "truncated JSON"])
+        results = ContentGenerator(agent=agent, chunk_size=2).generate_bulk_metadata(
+            [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]
+        )
+        self.assertEqual(len(agent.prompts), 4)
+        self.assertFalse(any(item.get("error") for item in results))
+        self.assertEqual([item["url"] for item in results], ["https://example.com/a", "https://example.com/b"])
+
+    def test_missing_page_in_valid_json_triggers_retry(self):
+        partial = json.dumps([{"index": 1, "title": "Only one page", "meta_description": "Description", "h1": "Heading"}])
+        agent = FakeAgent(responses=[partial])
+        results = ContentGenerator(agent=agent, chunk_size=2).generate_bulk_metadata(
+            [{"url": "https://example.com/a"}, {"url": "https://example.com/b"}]
+        )
+        self.assertEqual(len(agent.prompts), 2)
+        self.assertTrue(results[1]["proposed_title"])
+
     def test_completion_supports_client_without_temperature_argument(self):
         from types import SimpleNamespace
         from modules.agent import SEOAgent

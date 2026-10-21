@@ -323,9 +323,11 @@ export async function saveClientIntake(formData: FormData): Promise<void> {
     await supabase.auth.getClaims();
   if (claimsError || !claimsData?.claims?.sub) redirect("/login");
 
+  const { data: existing, error: readError } = await supabase.from("clients").select("intake").eq("id", clientId).single();
+  if (readError) throw new Error("The client could not be loaded.");
   const { error } = await supabase
     .from("clients")
-    .update({ intake })
+    .update({ intake: { ...existing.intake, ...intake } })
     .eq("id", clientId);
   if (error) throw new Error("The intake answers could not be saved.");
 

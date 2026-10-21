@@ -135,6 +135,7 @@ export function ShareUnlock({ token }: { token: string }) {
         token={token}
         onStatusesChanged={updateFindingStatuses}
       />
+      {portal.summary.executive_summary !== undefined && <section className="report-hero"><div><h2>Executive summary</h2><p>{portal.summary.executive_summary}</p></div></section>}
       <AuditInsights summary={portal.summary}/>
       {portal.totalTasks > 0 && <>
         <section className="card"><div className="section-title"><div><h2>Assigned task progress</h2><p>{portal.completedTasks} of {portal.totalTasks} assigned tasks completed</p></div><strong>{progress}%</strong></div><div className="progress"><span style={{ width: `${progress}%` }} /></div></section>

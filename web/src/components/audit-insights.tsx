@@ -59,10 +59,15 @@ export function AuditInsights({
   return <>
     <ServiceStatus errors={errors} />
     <PropertyContext summary={summary} />
+    {summary.recommendation_progress?.previous_audit_id && <section className="card report-section">
+      <div className="section-title"><div><h2>Previous recommendations</h2><p>Compared with the previous audit, including saved report edits. Matching wording is preserved unless a specific issue remains. Use a fresh crawl or newly generated exports.</p></div></div>
+      <p>{summary.recommendation_progress.items.filter(item => item.status === "implemented").length} implemented · {summary.recommendation_progress.items.filter(item => item.status === "not_implemented").length} not matched · {summary.recommendation_progress.items.filter(item => item.status === "not_verified").length} not verified</p>
+      <details><summary>View comparison details</summary><div className="table-wrap"><table><thead><tr><th>Page / image</th><th>Field</th><th>Status</th><th>Evidence</th></tr></thead><tbody>{summary.recommendation_progress.items.map((item, index) => <tr key={index}><td><ReportLink url={item.url}/>{item.image_url && <><br/><ReportLink url={item.image_url}/></>}</td><td>{item.field.replaceAll("_", " ")}</td><td>{item.status === "implemented" ? "Implemented" : item.status === "not_verified" ? "Not verified" : "Not matched"}</td><td>{item.reason}</td></tr>)}</tbody></table></div></details>
+    </section>}
     <CrawlCoverage summary={summary} />
     <SiteInventory summary={summary} />
     <SemrushSiteAudit summary={summary} />
-    <KeywordStrategyReview auditId={auditId} keywords={keywords} initialTargets={targets} />
+    <KeywordStrategyReview key={`${auditId ?? "preview"}:${JSON.stringify(targets)}`} auditId={auditId} keywords={keywords} initialTargets={targets} />
     <SearchVisibility summary={summary} />
     {pageAnalysisUnavailable && <PageRecommendationsUnavailable />}
     {recommendations.length > 0 && <RecommendationSection
@@ -238,17 +243,22 @@ function RecommendationSection({
     return proposed && proposed !== current;
   });
   const rows = includeUnchanged ? recommendations : changed;
+  const showWordCounts = proposedKey === "proposed_title" || proposedKey === "proposed_meta_description";
   return <section className="card report-section">
     <div className="section-title"><div><h2>{title}</h2><p>{includeUnchanged ? `${recommendations.length} pages listed. ${changed.length} material changes.` : `${changed.length} material changes. Unchanged values are omitted.`} {description}</p></div></div>
     {rows.length
-      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th>{includeUnchanged && <th>Status</th>}</tr></thead><tbody>{rows.map((item) => {
+      ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th></tr></thead><tbody>{rows.map((item) => {
         const current = String(item[currentKey] ?? "");
         const proposed = String(item[proposedKey] ?? "");
-        const isChanged = proposed.trim() && proposed.trim() !== current.trim();
-        return <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}</td><td><WordDiff current={current} proposed={proposed}/></td>{includeUnchanged && <td>{isChanged ? "Updated" : "Unchanged"}</td>}</tr>;
+        return <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}{showWordCounts && <WordCount text={current}/>}</td><td><WordDiff current={current} proposed={proposed}/>{showWordCounts && <WordCount text={proposed}/>}</td></tr>;
       })}</tbody></table></div>
       : <EmptyState text="No recommendations were generated."/>}
   </section>;
+}
+
+function WordCount({ text }: { text: string }) {
+  const count = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  return <small style={{ display: "block", marginTop: 8, color: "var(--muted)" }}>{count} {count === 1 ? "word" : "words"}</small>;
 }
 
 function OnPageRecommendations({ recommendations }: { recommendations: ContentRecommendation[] }) {
@@ -268,10 +278,10 @@ function WordDiff({ current, proposed }: { current: string; proposed: string }) 
   const currentWords = current.split(/\s+/).filter(Boolean);
   const proposedWords = proposed.split(/\s+/).filter(Boolean);
   const currentSet = new Set(currentWords.map(normalizeWord));
-  return <div className="word-diff">{proposedWords.map((word, index) => {
+  return <span className="word-diff">{proposedWords.map((word, index) => {
     const changed = !currentSet.has(normalizeWord(word));
     return <span key={`${word}-${index}`}>{index ? " " : ""}{changed ? <mark><strong>{word}</strong></mark> : word}</span>;
-  })}</div>;
+  })}</span>;
 }
 
 function normalizeWord(value: string) {
