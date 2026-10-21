@@ -54,6 +54,7 @@ def generate_report_exports(
         include_supplemental=True,
         technical_evidence=technical_evidence_rows(rows),
         technical_coverage=coverage_rows(summary),
+        competitor_communities=summary.get("competitor_communities") or [],
     )
     progress = summary.get("recommendation_progress") or {}
     if progress.get("previous_audit_id"):
@@ -132,6 +133,14 @@ def technical_evidence_rows(findings):
 
 def _recap_lines(summary: dict[str, Any]) -> list[str]:
     lines = []
+    review = summary.get("feedback_review") or {}
+    if review.get("reviewed_at"):
+        lines.append(f"Report feedback updated: {review['reviewed_at']}")
+    edit = summary.get("report_edit") or {}
+    if edit.get("revision"):
+        lines.append(f"Report revision: {edit['revision']}")
+    if (summary.get("repair") or {}).get("repaired_at"):
+        lines.append(f"Historical report repair: {summary['repair']['repaired_at']}")
     if summary.get("executive_summary"):
         lines.append(summary["executive_summary"])
     if summary.get("pages_scanned"):

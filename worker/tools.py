@@ -125,6 +125,8 @@ class ToolRunner:
             related=related,
             seed_metrics=seed_metrics,
             vertical=vertical,
+            excluded_terms=options.get("excluded_keywords") or [],
+            excluded_exact_keywords=options.get("excluded_keyword_targets") or [],
             page_urls=page_urls,
             max_keywords=int(options.get("max_keywords") or 60),
         )

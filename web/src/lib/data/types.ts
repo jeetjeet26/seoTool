@@ -28,6 +28,11 @@ export interface PageExperience {
   url: string;
   performance_score?: number;
   accessibility_score?: number;
+  fetch_time?: string;
+  historical_report_date?: string;
+  measurement_status?: string;
+  measurement_note?: string;
+  source?: string;
   metrics?: Record<string, { display_value?: string }>;
   accessibility_issues?: Array<{ id?: string; title?: string }>;
 }
@@ -69,6 +74,9 @@ export interface CompetitorCommunity {
   score?: number;
   source?: "google_places" | "official_builder_website" | "provided";
   resolution_status?: "verified" | "unverified";
+  distance_note?: string;
+  comparison_note?: string;
+  notes?: string;
 }
 
 export interface AltTextRecommendation {

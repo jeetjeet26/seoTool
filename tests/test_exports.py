@@ -26,6 +26,10 @@ class ExportTests(unittest.TestCase):
             "finding_count": 1,
             "target_url": "https://example.com/",
             "target_location": "Dallas, Texas",
+            "feedback_review": {"reviewed_at": "2026-10-21T12:00:00Z"},
+            "report_edit": {"revision": "review-revision"},
+            "repair": {"repaired_at": "2026-10-19T12:00:00Z"},
+            "competitor_communities": [{"name": "Client competitor", "url": "https://competitor.example/"}],
             "content_recommendations": [
                 {
                     "url": "https://example.com/",
@@ -60,6 +64,11 @@ class ExportTests(unittest.TestCase):
         self.assertIn("Technical SEO", workbook.sheetnames)
         self.assertIn("Page Speed", workbook.sheetnames)
         self.assertIn("Program Recap", workbook.sheetnames)
+        self.assertEqual(workbook["Competitors"]["A6"].value, "Client competitor")
+        recap = "\n".join(str(cell.value or "") for cell in workbook["Program Recap"]["A"])
+        self.assertIn("Report feedback updated: 2026-10-21T12:00:00Z", recap)
+        self.assertIn("Report revision: review-revision", recap)
+        self.assertIn("Historical report repair: 2026-10-19T12:00:00Z", recap)
         self.assertNotIn("Glossary", workbook.sheetnames)
         # Proposed title lands in the Title Tags sheet.
         titles = workbook["Title Tags"]

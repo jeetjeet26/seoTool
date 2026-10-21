@@ -217,7 +217,7 @@ function SearchVisibility({ summary }: { summary: AuditSummary }) {
     <div className="subsection">
       <h3>{communities.length ? "Selected competitor communities" : "Compare domains"}</h3>
       {communities.length
-        ? <div className="table-wrap"><table><thead><tr><th>Community</th><th>Builder</th><th>Location</th><th>Distance</th><th>Verification</th><th>Website</th></tr></thead><tbody>{communities.map((item) => <tr key={item.place_id || `${item.name}-${item.location}`}><td><strong>{item.name}</strong></td><td>{item.builder || "—"}</td><td>{item.location}</td><td>{item.distance_miles === undefined ? "—" : `${formatNumber(item.distance_miles)} mi`}</td><td>{item.resolution_status === "verified" ? (item.source === "official_builder_website" ? "Builder verified" : "Google verified") : "Provided"}</td><td className="url-cell">{item.url ? <ReportLink url={item.url}/> : "—"}</td></tr>)}</tbody></table></div>
+        ? <div className="table-wrap"><table><thead><tr><th>Community</th><th>Builder</th><th>Location</th><th>Distance</th><th>Verification</th><th>Website</th><th>Comparison notes</th></tr></thead><tbody>{communities.map((item) => <tr key={item.place_id || `${item.name}-${item.location}`}><td><strong>{item.name}</strong></td><td>{item.builder || "—"}</td><td>{item.location}</td><td>{item.distance_miles == null ? "—" : `${formatNumber(item.distance_miles)} mi`}{item.distance_note && <p>{item.distance_note}</p>}</td><td>{item.resolution_status === "verified" ? (item.source === "official_builder_website" ? "Builder verified" : "Google verified") : "Provided"}</td><td className="url-cell">{item.url ? <ReportLink url={item.url}/> : "—"}</td><td>{item.comparison_note || item.notes || "—"}</td></tr>)}</tbody></table></div>
         : competitors.length
           ? <div className="table-wrap"><table><thead><tr><th>Domain</th><th>Source</th><th>Relevance</th><th>Shared keywords</th><th>Organic keywords</th><th>Traffic</th></tr></thead><tbody>{competitors.map((item) => <tr key={item.domain}><td><strong>{item.domain}</strong></td><td>{item.source === "provided" ? "Provided" : "Semrush"}</td><td>{item.competition_level}</td><td>{formatNumber(item.common_keywords)}</td><td>{formatNumber(item.organic_keywords)}</td><td>{formatNumber(item.organic_traffic)}</td></tr>)}</tbody></table></div>
           : <EmptyState text="No competitor communities or domains were provided for this audit."/>}
@@ -316,11 +316,17 @@ function PageSpeedResults({
 }) {
   const pageSpeedErrors = errors.filter((error) => error.service === "pagespeed");
   return <section className="card report-section">
-    <div className="section-title"><div><h2>Page speed & accessibility</h2><p>Sampled mobile Lighthouse results.</p></div></div>
+    <div className="section-title"><div><h2>Page speed & accessibility</h2><p>Sampled mobile Lighthouse lab results. Measurement dates remain separate from report updates.</p></div></div>
     {results.length
-      ? <div className="table-wrap"><table><thead><tr><th>URL</th><th>Performance</th><th>Accessibility</th><th>LCP</th><th>CLS</th><th>Blocking time</th></tr></thead><tbody>{results.map((result) => <tr key={result.url}><td className="url-cell"><ReportLink url={result.url}/></td><td>{result.performance_score ?? "—"}</td><td>{result.accessibility_score ?? "—"}</td><td>{result.metrics?.largest_contentful_paint?.display_value ?? "—"}</td><td>{result.metrics?.cumulative_layout_shift?.display_value ?? "—"}</td><td>{result.metrics?.total_blocking_time?.display_value ?? "—"}</td></tr>)}</tbody></table></div>
+      ? <div className="table-wrap"><table><thead><tr><th>URL</th><th>Performance</th><th>Accessibility</th><th>LCP</th><th>CLS</th><th>Blocking time</th><th>Measurement evidence</th></tr></thead><tbody>{results.map((result) => <tr key={result.url}><td className="url-cell"><ReportLink url={result.url}/></td><td>{result.performance_score ?? "—"}</td><td>{result.accessibility_score ?? "—"}</td><td>{result.metrics?.largest_contentful_paint?.display_value ?? "—"}</td><td>{result.metrics?.cumulative_layout_shift?.display_value ?? "—"}</td><td>{result.metrics?.total_blocking_time?.display_value ?? "—"}</td><td><strong>{result.measurement_status === "historical_retained" ? "Historical measurement retained" : "Recorded measurement"}</strong><p>{measurementDate(result.fetch_time || result.historical_report_date)}</p>{result.source && <p>{humanize(result.source)}</p>}{result.measurement_note && <p>{result.measurement_note}</p>}</td></tr>)}</tbody></table></div>
       : <EmptyState text={pageSpeedErrors.length ? `PageSpeed failed for ${pageSpeedErrors.length} sampled pages. See Analysis coverage above.` : "PageSpeed was not requested for this audit."}/>}
   </section>;
+}
+
+function measurementDate(value?: string) {
+  if (!value) return "Measurement date not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "UTC" }).format(date);
 }
 
 function ReportLink({ url }: { url?: string }) {

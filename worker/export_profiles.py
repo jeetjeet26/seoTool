@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
 from datetime import date
 from typing import Any, Iterable
@@ -275,6 +276,35 @@ def _keyword_metric(row: dict, key: str) -> Any:
     return "n/a" if value is None or value == "" else value
 
 
+def _detail_text(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value) if value is not None else ""
+
+
+def _competitor_details(row: dict) -> tuple[str, str, str, str]:
+    evidence = row.get("verification_evidence")
+    if not isinstance(evidence, dict):
+        evidence = {}
+    distance = "\n".join(dict.fromkeys(
+        _detail_text(value) for value in (
+            row.get("distance_method"), row.get("distance_basis"), row.get("distance_origin"),
+            row.get("distance_note"), evidence.get("distance_method"),
+            evidence.get("distance_origin"), evidence.get("distance_status"),
+        ) if value is not None and value != ""
+    )) or "Not recorded"
+    source = "\n".join(dict.fromkeys(str(value) for value in (
+        row.get("source"), row.get("source_url"), evidence.get("source_url"),
+    ) if value))
+    notes = "\n".join(dict.fromkeys(
+        _detail_text(value) for value in (
+            row.get("comparison_note"), row.get("notes"), row.get("community_type"),
+            row.get("age_restriction"), row.get("verification_note"),
+        ) if value is not None and value != ""
+    ))
+    return distance, source, str(evidence.get("verified_at") or evidence.get("verified_date") or row.get("verified_at") or "Not recorded"), notes
+
+
 def build_client_workbook(
     property_name: str,
     keywords: list[dict] | None = None,
@@ -288,6 +318,7 @@ def build_client_workbook(
     include_supplemental: bool = False,
     technical_evidence: list[list] | None = None,
     technical_coverage: list[list] | None = None,
+    competitor_communities: list[dict] | None = None,
 ) -> Workbook:
     """Build the multi-sheet client report workbook.
 
@@ -321,6 +352,23 @@ def build_client_workbook(
             ],
         )
         sections.append("Keyword Research")
+
+    if competitor_communities:
+        competitors = workbook.create_sheet("Competitors")
+        _sheet_title(competitors, property_name, "Client-selected Competitors")
+        competitors.cell(row=3, column=1, value="Client-selected comparison set. Distances retain their stated method and origin; verification of identity does not verify market equivalence.")
+        competitor_rows = []
+        for item in competitor_communities:
+            distance, source, verified_at, notes = _competitor_details(item)
+            competitor_rows.append([
+                item.get("name", ""), item.get("url", ""), item.get("location", ""),
+                item.get("address", ""), item.get("distance_miles") if item.get("distance_miles") is not None else "Not measured",
+                distance, item.get("resolution_status") or "Not recorded", source, verified_at, notes,
+            ])
+        _table(competitors, ["Name", "Official Website", "Location", "Address", "Distance (miles)", "Distance Basis", "Verification", "Source", "Verified At", "Notes"], competitor_rows)
+        _fit_technical_sheet(competitors, [35, 55, 28, 50, 18, 65, 22, 60, 26, 70])
+        competitors.auto_filter.ref = f"A5:J{5 + len(competitor_rows)}"
+        sections.append("Competitors")
 
     if metadata_items and report_variant == "full_client":
         revised = date.today().strftime("%-m/%-d/%y")
@@ -546,16 +594,22 @@ def build_client_workbook(
         _sheet_title(speed, property_name, "Page Speed & Accessibility")
         _table(
             speed,
-            ["URL", "Performance Score", "Accessibility Score"],
+            ["URL", "Performance Score", "Accessibility Score", "Measured At", "Evidence Status", "Source", "Notes"],
             [
                 [
                     row.get("url", ""),
                     row.get("performance_score", ""),
                     row.get("accessibility_score", ""),
+                    row.get("fetch_time") or row.get("historical_report_date") or "Not recorded",
+                    "Historical measurement retained" if row.get("measurement_status") == "historical_retained" else row.get("measurement_status") or "Recorded measurement; see date",
+                    row.get("source") or "Not recorded",
+                    row.get("measurement_note") or "Sampled lab measurement; not field Core Web Vitals or a sitewide result.",
                 ]
                 for row in page_experience
             ],
         )
+        speed.cell(row=3, column=1, value="Scores retain their original measurement dates. A report update does not make historical measurements fresh.")
+        _fit_technical_sheet(speed, [65, 22, 22, 32, 38, 28, 85])
         sections.append("Page Speed")
 
     if recap_lines and (include_supplemental or report_variant not in {"full_client", "in_house"}):

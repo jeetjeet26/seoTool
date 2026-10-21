@@ -269,6 +269,50 @@ class ClientWorkbookTests(unittest.TestCase):
         titles = workbook["Title Tags"]
         self.assertEqual(titles.cell(row=6, column=5).value, "'=EVIL()")
 
+    def test_competitors_preserve_distance_limits_and_comparison_context(self):
+        workbook = build_client_workbook("Test Property", competitor_communities=[
+            {"name": "Co-builder", "url": "https://example.com/builder/", "location": "City, FL",
+             "address": "100 Main Street", "distance_miles": 0, "distance_method": "straight_line",
+             "distance_origin": {"name": "City center", "precision": "approximate"},
+             "distance_note": "Approximate city-center origin; not driving distance.",
+             "resolution_status": "verified", "source": "official_builder_website",
+             "verification_evidence": {"source_url": "https://example.com/source/", "verified_at": "2026-10-21T12:00:00Z"},
+             "community_type": "all_ages", "comparison_note": "Competing builder within the same community."},
+            {"name": "=UNTRUSTED()", "distance_miles": None, "notes": "Client-provided; not verified.",
+             "verification_evidence": "Legacy free-text value"},
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "competitors.xlsx"
+            workbook.save(path)
+            sheet = load_workbook(path)["Competitors"]
+        self.assertEqual(sheet["B6"].value, "https://example.com/builder/")
+        self.assertEqual(sheet["E6"].value, 0)
+        self.assertEqual(sheet["E7"].value, "Not measured")
+        self.assertIn('"precision": "approximate"', sheet["F6"].value)
+        self.assertIn("not driving distance", sheet["F6"].value)
+        self.assertIn("https://example.com/source/", sheet["H6"].value)
+        self.assertEqual(sheet["I6"].value, "2026-10-21T12:00:00Z")
+        self.assertIn("all_ages", sheet["J6"].value)
+        self.assertIn("same community", sheet["J6"].value)
+        self.assertEqual(sheet["A7"].value, "'=UNTRUSTED()")
+        self.assertIn("Competitors", [cell.value for cell in workbook["Introduction"]["B"]])
+
+    def test_page_speed_keeps_measurement_dates_and_historical_limits_visible(self):
+        workbook = build_client_workbook("Test Property", include_supplemental=True, page_experience=[
+            {"url": "https://example.com/", "performance_score": 12, "accessibility_score": 80,
+             "fetch_time": "2026-10-19T12:30:00Z", "measurement_status": "historical_retained",
+             "source": "local_lighthouse", "measurement_note": "Fresh measurement unavailable; earlier lab run retained."},
+            {"url": "https://example.com/other/", "performance_score": 0},
+        ])
+        sheet = workbook["Page Speed"]
+        self.assertEqual(sheet["B6"].value, 12)
+        self.assertEqual(sheet["D6"].value, "2026-10-19T12:30:00Z")
+        self.assertEqual(sheet["E6"].value, "Historical measurement retained")
+        self.assertIn("Fresh measurement unavailable", sheet["G6"].value)
+        self.assertEqual(sheet["B7"].value, 0)
+        self.assertEqual(sheet["D7"].value, "Not recorded")
+        self.assertNotIn("fresh", sheet["E7"].value.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
