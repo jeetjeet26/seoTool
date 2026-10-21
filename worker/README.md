@@ -45,3 +45,24 @@ normalization tests.
 No Supabase project is currently linked. The worker cannot start until the
 local migrations have been reviewed, applied to an authorized project, and the
 required secrets have been configured.
+
+## Semrush Site Audit automation
+
+Audit enrichment reuses a matching project and its latest completed snapshot.
+If no project exists, it creates one; if the campaign is absent, it enables it
+with the audit URL and page limit, email notifications off, and no recurring
+schedule. A missing completed audit is launched automatically; an already
+running audit is awaited instead of launched twice. New community/subfolder
+projects have stable scope-specific names so retries discover the same project.
+Existing campaign settings are preserved.
+
+The worker waits up to ten minutes for first results, polling every 30 seconds.
+If Semrush is still pending, the report explicitly says so and excludes pending
+results. A later audit run can import the completed snapshot. Authentication,
+permissions, quota/rate limits, setup failures, crawl failures, malformed
+responses and incomplete issue exports are reported separately from organic
+research. The existing v3 API key/integration is retained; campaign summaries,
+snapshot lists and snapshot detail are fetched from their documented endpoints.
+
+References: https://developer.semrush.com/api/v3/projects/projects/ and
+https://developer.semrush.com/api/v3/projects/site-audit/.
