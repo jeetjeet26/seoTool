@@ -34,7 +34,7 @@ export interface PageExperience {
 
 export interface KeywordStrategyItem {
   keyword: string;
-  source: "approved" | "ranking" | "related" | "seed" | "analyst_provided_metrics_pending";
+  source: "approved" | "ranking" | "related" | "seed" | "semrush" | "analyst_provided_metrics_pending";
   volume: number;
   cpc: number;
   difficulty: number;

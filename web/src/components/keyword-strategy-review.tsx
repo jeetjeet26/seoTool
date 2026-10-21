@@ -90,7 +90,7 @@ export function KeywordStrategyReview({
                 <td>{item.position ?? "—"}</td>
                 <td>{metricsPending ? "Pending" : formatNumber(item.volume)}</td>
                 <td>{metricsPending ? "Pending" : formatCurrency(item.cpc)}</td>
-                <td>{metricsPending ? "Pending" : item.difficulty || "—"}</td>
+                <td>{metricsPending ? "Pending" : item.difficulty ?? "—"}</td>
                 <td className="url-cell"><a href={item.assigned_page} target="_blank" rel="noreferrer">{stripProtocol(item.assigned_page)}</a></td>
                 <td>{isApproved
                   ? <span className="status-badge complete">Locked</span>

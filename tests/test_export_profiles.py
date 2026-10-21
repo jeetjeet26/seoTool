@@ -244,6 +244,23 @@ class ClientWorkbookTests(unittest.TestCase):
         self.assertEqual(titles.cell(row=7, column=4).value, 0)
         self.assertEqual(titles.cell(row=7, column=6).value, 0)
 
+    def test_keyword_metrics_distinguish_measured_zero_missing_and_pending(self):
+        keywords = [
+            {"keyword": "measured zero", "source": "semrush", "volume": 0, "cpc": 0, "difficulty": 0},
+            {"keyword": "missing fields"},
+            {"keyword": "null fields", "volume": None, "cpc": None, "difficulty": None},
+            {"keyword": "pending measurements", "source": "analyst_provided_metrics_pending",
+             "volume": 0, "cpc": 0, "difficulty": 0},
+        ]
+        workbook = build_client_workbook("Test Property", keywords=keywords)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "keyword-metrics.xlsx"
+            workbook.save(path)
+            reloaded = load_workbook(path)
+        sheet = reloaded["Keyword Research"]
+        for row, expected in [(6, 0), (7, "n/a"), (8, "n/a"), (9, "Pending")]:
+            self.assertEqual([sheet.cell(row=row, column=column).value for column in (4, 5, 6)], [expected] * 3)
+
     def test_formula_values_are_sanitized_in_tables(self):
         workbook = build_client_workbook(
             "Test Property",

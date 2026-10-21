@@ -5,6 +5,7 @@ import { getCurrentProfile } from "@/lib/auth/user";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ChatError, applyEdits, revision, type ReportDocument, type Json, type Change } from "./patch";
 import { planEdits, REPORT_MODEL, type Conversation } from "./model";
+import type { ResearchSource } from "./research";
 
 let client: ReturnType<typeof postgres> | undefined;
 function database() {
@@ -12,7 +13,7 @@ function database() {
   return client ??= postgres(process.env.SUPABASE_DB_URL, { max: 3, idle_timeout: 20, connect_timeout: 10, prepare: false });
 }
 type Sql = postgres.Sql | postgres.TransactionSql;
-export type ChatEntry = { id: string; requestId: string; prompt: string; message: string; pending: string[]; changes: Change[]; createdAt: string; undoable: boolean };
+export type ChatEntry = { id: string; requestId: string; prompt: string; message: string; pending: string[]; research: ResearchSource[]; changes: Change[]; createdAt: string; undoable: boolean };
 async function authorize(sql: Sql, userId: string) {
   // The existing app grants all internal analysts/admins access to all audits.
   // Recheck the database role before every direct SQL read/write.
@@ -48,7 +49,7 @@ async function load(sql: Sql, auditId: string, lock = false) {
   return { audit, document: { summary, findings } as ReportDocument };
 }
 function entry(row: postgres.Row): ChatEntry {
-  return { id: row.id, requestId: row.payload.requestId, prompt: row.payload.prompt, message: row.message ?? "", pending: row.payload.pending ?? [], changes: row.payload.changes ?? [], createdAt: new Date(row.created_at).toISOString(), undoable: !!row.payload.before && !row.payload.undone };
+  return { id: row.id, requestId: row.payload.requestId, prompt: row.payload.prompt, message: row.message ?? "", pending: row.payload.pending ?? [], research: row.payload.research ?? [], changes: row.payload.changes ?? [], createdAt: new Date(row.created_at).toISOString(), undoable: !!row.payload.before && !row.payload.undone };
 }
 async function recent(sql: Sql, auditId: string) {
   return sql`select id, message, (payload - 'before') || jsonb_build_object('before', payload ? 'before') as payload, created_at from public.audit_events where audit_id = ${auditId}::uuid and event_type = 'report_chat' order by created_at desc, id desc limit 30`;
@@ -72,7 +73,7 @@ function counts(document: ReportDocument) {
   document.summary.severity_counts = severity;
   document.summary.category_counts = category;
 }
-async function persist(sql: postgres.TransactionSql, auditId: string, before: ReportDocument, after: ReportDocument, editId: string, restoring = false) {
+async function persist(sql: postgres.TransactionSql, auditId: string, before: ReportDocument, after: ReportDocument, editId: string, restoring = false, research: ResearchSource[] = []) {
   // Hide removed findings instead of deleting their evidence and task references.
   for (const id of new Set([...Object.keys(before.findings), ...Object.keys(after.findings)])) {
     const finding = after.findings[id];
@@ -84,7 +85,7 @@ async function persist(sql: postgres.TransactionSql, auditId: string, before: Re
         if (before.findings[id] || restoring) throw new ChatError("A finding was removed since this edit. The report could not be restored.", 409);
         const stableKey = createHash("sha256").update(`analyst:${auditId}:${id}`).digest("hex");
         await sql`insert into public.findings (id, audit_id, stable_key, rule_key, title, description, recommendation, category, severity, page_url, resource_url, source_file, evidence, metadata)
-          values (${id}::uuid, ${auditId}::uuid, ${stableKey}, 'analyst_provided', ${String(finding.title)}, ${String(finding.description)}, ${String(finding.recommendation)}, ${String(finding.category)}, ${String(finding.severity)}::public.finding_severity, ${String(finding.page_url)}, ${String(finding.resource_url)}, 'Analyst review', ${sql.json({ source: "analyst_provided", observation: finding.description } as postgres.JSONValue)}, ${sql.json({ report_chat_edited: true, report_chat_created: true, report_edit_id: editId })})`;
+          values (${id}::uuid, ${auditId}::uuid, ${stableKey}, 'analyst_provided', ${String(finding.title)}, ${String(finding.description)}, ${String(finding.recommendation)}, ${String(finding.category)}, ${String(finding.severity)}::public.finding_severity, ${String(finding.page_url)}, ${String(finding.resource_url)}, 'Report chat review', ${sql.json({ source: research.length ? 'report_chat_review' : 'analyst_provided', observation: finding.description, ...(research.length ? { research_context: research.map(({ tool, subject, status, checkedAt, url }) => ({ tool, subject, status, checkedAt, url })) } : {}) } as postgres.JSONValue)}, ${sql.json({ report_chat_edited: true, report_chat_created: true, report_edit_id: editId })})`;
       }
     }
   }
@@ -104,7 +105,7 @@ export async function sendChat(auditId: string, userId: string, prompt: string, 
   const historyRows = (await recent(sql, auditId)).reverse();
   const history: Conversation[] = historyRows.flatMap((row) => [
     { role: "user" as const, content: String(row.payload.prompt) },
-    { role: "assistant" as const, content: `${row.message}${row.payload.pending?.length ? ` Pending: ${row.payload.pending.join("; ")}` : ""}${row.payload.undone ? " [This edit was undone.]" : ""}` },
+    { role: "assistant" as const, content: `${row.message}${row.payload.pending?.length ? ` Pending: ${row.payload.pending.join("; ")}` : ""}${row.payload.research?.length ? ` Previous research (historical, not a fresh lookup): ${row.payload.research.map((source: ResearchSource) => `${source.tool}: ${source.subject}, ${source.status}, ${source.checkedAt}`).join("; ")}` : ""}${row.payload.undone ? " [This edit was undone.]" : ""}` },
   ]);
   const plan = await planEdits(document, { id: auditId, name: String((audit.summary.property_context ?? {}).name || audit.name), url: audit.target_url }, history, prompt);
   const { next, changes } = applyEdits(document, plan.edits);
@@ -117,8 +118,8 @@ export async function sendChat(auditId: string, userId: string, prompt: string, 
     ensureEditable(current.audit.status);
     if (revision(current.document) !== revision(document)) throw new ChatError("The report changed while I was working. No edits were applied. Please send your request again.", 409);
     const id = randomUUID();
-    if (changes.length) await persist(tx, auditId, document, next, id);
-    const payload = { requestId, prompt, model: REPORT_MODEL, pending: plan.pending, changes, ...(changes.length ? { before: document, afterRevision: revision(next) } : {}) };
+    if (changes.length) await persist(tx, auditId, document, next, id, false, plan.research);
+    const payload = { requestId, prompt, model: REPORT_MODEL, pending: plan.pending, research: plan.research ?? [], changes, ...(changes.length ? { before: document, afterRevision: revision(next) } : {}) };
     const rows = await tx`insert into public.audit_events (id, audit_id, event_type, message, payload, actor_id) values (${id}::uuid, ${auditId}::uuid, 'report_chat', ${plan.message}, ${tx.json(payload as postgres.JSONValue)}, ${userId}::uuid) returning id, message, payload, created_at`;
     return entry(rows[0]);
   });

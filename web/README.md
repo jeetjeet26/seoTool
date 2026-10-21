@@ -46,9 +46,9 @@ up to 100,000 characters or attach a `.md` / `.txt` review; oversized input is
 rejected without truncation. One request supports up to 500 precise edits. Highlight
 report text to include it in a request. Ambiguous requests prompt a clarification.
 
-Configure `OPENAI_API_KEY` and `SUPABASE_DB_URL` on the **web server**, alongside
+Configure `OPENAI_API_KEY`, `SUPABASE_DB_URL`, and `SEMRUSH_API_KEY` on the **web server**, alongside
 the existing Supabase public configuration. Never use a `NEXT_PUBLIC_` variable
-for the OpenAI key. The API requires a signed-in, active internal admin or analyst
+for either API key. The API requires a signed-in, active internal admin or analyst
 and follows the application's existing internal staff access policy. No database
 migration is needed. Chat messages and reversible edit snapshots use audit_events.
 
@@ -76,10 +76,29 @@ Validation: `npm run test:report-chat` (Node 22.18+), `npm run typecheck`,
 `npm run lint`, and `npm run build`. Run Python export tests from the repository
 root with `.venv/bin/python -m unittest tests.test_exports tests.test_export_profiles tests.test_report_chat_exports`.
 
-New technical findings are saved with analyst provenance and included in report
+New technical findings are saved with analyst or chat-research provenance and included in report
 counts and regenerated downloads. Account-lead notes preserve document-only
 instructions. Expand affected URLs to read each finding's evidence and recommendation.
-The planner has no live-site or Semrush lookup tool: conditional verification stays
-pending, and new keywords awaiting metrics show Pending rather than measured zero.
+The chatbot can research before editing with two read-only tools:
+
+- Exact keyword metrics from Semrush's US database, up to 10 keywords per call and
+  30 distinct keywords per request. Uses the same v3 API credential as the audit
+  worker; v4 requires a separately provisioned credential and a coordinated migration.
+- Public live HTML pages, up to 4 per call and 8 distinct pages per request. Scope
+  is the selected community path, known report page/competitor URLs, or URLs in the
+  current user request. DNS addresses and every redirect are checked; connections
+  are pinned to public IPs. No cookies, browser execution, or image interpretation.
+
+The reply's **Sources checked** panel records the tool result and time, including
+failed checks, and survives reload. Only the final validated edit plan writes report
+content; research-only questions do not alter the report. Current crawl evidence is
+preserved unless explicitly refreshed. Missing or blocked data leaves specific work
+pending while other supported edits can save. No-data is distinct from measured zero;
+failed refreshes preserve existing measurements. Page checks do not verify driving
+distance, performance scores, or facts absent from the returned HTML.
+
+Example: “Pull Semrush volume for these nine keywords, check Ana's living square
+footage on its live page, then apply the keyword additions and meta edit from my review.”
+
 Tests mock model HTTP and database queries; live model/database behavior must be
 verified in the deployed environment.

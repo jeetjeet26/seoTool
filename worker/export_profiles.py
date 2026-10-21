@@ -268,6 +268,13 @@ def _page_name(url: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _keyword_metric(row: dict, key: str) -> Any:
+    if row.get("source") == "analyst_provided_metrics_pending":
+        return "Pending"
+    value = row.get(key)
+    return "n/a" if value is None or value == "" else value
+
+
 def build_client_workbook(
     property_name: str,
     keywords: list[dict] | None = None,
@@ -305,9 +312,9 @@ def build_client_workbook(
                     row.get("keyword", ""),
                     row.get("position") or "-",
                     (row.get("intent") or "commercial")[:1],
-                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("cpc") or "n/a",
-                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("volume") or "n/a",
-                    "Pending" if row.get("source") == "analyst_provided_metrics_pending" else row.get("difficulty") or "n/a",
+                    _keyword_metric(row, "cpc"),
+                    _keyword_metric(row, "volume"),
+                    _keyword_metric(row, "difficulty"),
                     row.get("assigned_page", ""),
                 ]
                 for row in keywords

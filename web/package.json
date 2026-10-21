@@ -8,12 +8,13 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:report-chat": "node --test tests/report-chat.test.mjs tests/report-chat-model.test.mjs tests/report-chat-persistence.test.mjs tests/text-metrics.test.mjs tests/report-chat-client.test.mjs tests/report-chat-pending.test.mjs tests/data-auth.test.mjs"
+    "test:report-chat": "node --test tests/report-chat.test.mjs tests/report-chat-model.test.mjs tests/report-chat-persistence.test.mjs tests/text-metrics.test.mjs tests/report-chat-client.test.mjs tests/report-chat-pending.test.mjs tests/data-auth.test.mjs tests/report-chat-research.test.mjs tests/report-chat-semrush.test.mjs tests/report-chat-live-page.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.111.0",
     "next": "16.2.12",
+    "parse5": "8.0.0",
     "postgres": "^3.4.9",
     "react": "19.2.4",
     "react-dom": "19.2.4"

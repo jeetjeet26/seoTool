@@ -8,9 +8,10 @@ import { applyEdits, valueReference } from "../src/lib/report-chat/patch.ts";
 // server-only marker or a database connection in the Node test runner.
 const source = (await readFile(new URL("../src/lib/report-chat/model.ts", import.meta.url), "utf8"))
   .replace('import "server-only";', "")
+  .replace(/import .* from "\.\/research";/, "const researchTools = []; let createResearchSession = () => ({ sources: [], execute: async () => ({}) }); export function injectResearch(factory) { createResearchSession = factory; }")
   .replace('"./patch"', JSON.stringify(new URL("../src/lib/report-chat/patch.ts", import.meta.url).href));
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } });
-const { planEdits } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
+const { planEdits, injectResearch } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 const target = { id: "test", name: "The Carter", url: "https://www.cartergrapevine.com/" };
 const fixture = () => ({ summary: { content_recommendations: ["amenities", "faq", "neighborhood", "floorplans", "rent-estimate"].map(path => ({
   url: `${target.url}${path}`, proposed_title: "Existing recommendation", current_h1: "Heading", proposed_h1: "Heading",
@@ -88,7 +89,7 @@ test("planner supports supplied review findings and keeps document-only instruct
   const prompt = "Apply this review.\n" + "Review evidence\n".repeat(700) + "Document only: template H2. Pull Semrush volumes.";
   const plan = await planEdits(document, target, [], prompt);
   assert.equal(bodies[0].input.at(-1).content, prompt);
-  assert.match(bodies[0].instructions, /no live website, Semrush/);
+  assert.match(bodies[0].instructions, /read-only lookup_semrush_keywords and read_live_pages/);
   assert.match(Object.values(applyEdits(document, plan.edits).next.findings)[0].recommendation, /Document only/);
 });
 
@@ -131,4 +132,38 @@ test("partial edits return explicit pending work separately from the success mes
   assert.ok(bodies[0].text.format.schema.required.includes("pending"));
   const context = JSON.parse(bodies[0].input[0].content.split("\n").slice(1).join("\n"));
   assert.deepEqual(context.content_page_index[0], { path: "/summary/content_recommendations/0", url: document.summary.content_recommendations[0].url });
+});
+
+test("planner uses research results for edits and returns source evidence, leaving unresolved checks pending", async t => {
+  const document = fixture();
+  const original = structuredClone(document);
+  const research = [{ tool: "live_page", subject: document.summary.content_recommendations[0].url, status: "ok", checkedAt: "2026-10-21T00:00:00Z", data: { body_text: "Living area 1,434 sq ft" } }];
+  const calls = [];
+  injectResearch(() => ({ sources: research, execute: async (name, args) => { calls.push({ name, args: JSON.parse(args) }); return name === "read_live_pages" ? { pages: [research[0].data] } : { results: [{ keyword: "new homes", status: "no_data", volume: null }] }; } }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  const bodies = await mockModel(t, (body, round) => {
+    if (round === 1) return { status: "completed", output: [
+      { type: "function_call", call_id: "kw", name: "lookup_semrush_keywords", arguments: JSON.stringify({ keywords: ["new homes"] }) },
+      { type: "function_call", call_id: "page", name: "read_live_pages", arguments: JSON.stringify({ urls: [document.summary.content_recommendations[0].url] }) },
+    ] };
+    assert.equal(body.input.filter(item => item.type === "function_call_output").length, 2);
+    return response({ message: "Verified the living area and updated the recommendation.", pending: ["Semrush has no data for new homes."], edits: [{ op: "add", path: "/summary/content_recommendations/0/proposed_meta_description", before: "null", value: "Explore 1,434 sq ft of living space." }] });
+  });
+  const plan = await planEdits(document, target, [], "Check living square footage and update the meta. Pull Semrush volume for new homes.");
+  assert.equal(calls.length, 2);
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(plan.research, research);
+  assert.equal(plan.pending.length, 1);
+  assert.match(applyEdits(document, plan.edits).next.summary.content_recommendations[0].proposed_meta_description, /1,434/);
+  assert.deepEqual(document, original);
+});
+
+test("research-only answers retain evidence without saving report edits", async t => {
+  const research = [{ tool: "semrush", subject: "new homes", status: "measured", checkedAt: "2026-10-21T00:00:00Z", data: { volume: 0 } }];
+  injectResearch(() => ({ sources: research, execute: async () => ({ results: [research[0].data] }) }));
+  t.after(() => injectResearch(() => ({ sources: [], execute: async () => ({}) })));
+  await mockModel(t, (_body, round) => round === 1 ? { status: "completed", output: [{ type: "function_call", call_id: "q", name: "lookup_semrush_keywords", arguments: '{"keywords":["new homes"]}' }] } : response({ message: "Semrush US reports zero volume.", edits: [] }));
+  const plan = await planEdits(fixture(), target, [], "What is the Semrush search volume for new homes? Do not edit the report.");
+  assert.deepEqual(plan.edits, []);
+  assert.equal(plan.research[0].data.volume, 0);
 });

@@ -7,6 +7,7 @@ test("pending work survives save, reload, and follow-up context without changing
   const auditId = "11111111-1111-4111-8111-111111111111";
   const userId = "22222222-2222-4222-8222-222222222222";
   const pending = ["Semrush measurements need verified source data."];
+  const research = [{ tool: "semrush", subject: "new homes", status: "no_data", checkedAt: "2026-10-21T00:00:00Z", data: { volume: null } }];
   const events = [{ id: "legacy", message: "An earlier answer", created_at: new Date(), payload: { requestId: "legacy", prompt: "Earlier question", changes: [] } }];
   const audit = { id: auditId, name: "Test report", target_url: "https://example.com/", status: "completed", summary: {} };
   const queries = [];
@@ -31,7 +32,7 @@ test("pending work survives save, reload, and follow-up context without changing
   sql.begin = callback => callback(sql);
   const planner = async (_document, _target, history) => {
     histories.push(history);
-    return { message: "The measurements are still pending.", edits: [], pending };
+    return { message: "The measurements are still pending.", edits: [], pending, research };
   };
   // Inject dependencies into an isolated module; exercise real sendChat/chatState.
   let source = await readFile(new URL("../src/lib/report-chat/server.ts", import.meta.url), "utf8");
@@ -48,14 +49,18 @@ test("pending work survives save, reload, and follow-up context without changing
   server.inject(sql, planner);
   const saved = await server.sendChat(auditId, userId, "Pull keyword metrics", "request-1");
   assert.deepEqual(saved.pending, pending);
+  assert.deepEqual(saved.research, research);
   assert.deepEqual(saved.changes, []);
   const reloaded = await server.chatState(auditId, userId);
   assert.deepEqual(reloaded.entries.at(-1).pending, pending);
   assert.deepEqual(reloaded.entries[0].pending, []);
+  assert.deepEqual(reloaded.entries[0].research, []);
+  assert.deepEqual(reloaded.entries.at(-1).research, research);
   const duplicate = await server.sendChat(auditId, userId, "Pull keyword metrics", "request-1");
   assert.equal(duplicate.id, saved.id);
   assert.equal(events.length, 2);
   await server.sendChat(auditId, userId, "What is still pending?", "request-2");
   assert.match(histories.at(-1).at(-1).content, /Pending: Semrush measurements/);
+  assert.match(histories.at(-1).at(-1).content, /Previous research.*no_data/);
   assert.ok(queries.every(query => !/update public\.(audits|findings)/.test(query)));
 });
