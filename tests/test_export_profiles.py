@@ -101,11 +101,24 @@ class CsvProfileTests(unittest.TestCase):
         rows = list(csv.reader(io.StringIO(output)))
         header = rows[0]
         row = dict(zip(header, rows[1]))
+        self.assertEqual(int(row["Current Title Length"]), len(self.ITEM["current_title"]))
         self.assertEqual(row["Proposed Title"], self.ITEM["proposed_title"])
         self.assertEqual(
             int(row["Proposed Title Length"]), len(self.ITEM["proposed_title"])
         )
         self.assertEqual(int(row["Proposed Description Length"]), 140)
+
+    def test_title_counts_use_text_instead_of_saved_lengths(self):
+        items = [
+            {**self.ITEM, "current_title": "🏡 Homes | Café", "proposed_title": "  Home  ",
+             "current_title_length": 999, "title_length": 999},
+            {"url": "https://example.com/missing", "current_title": None},
+        ]
+        rows = list(csv.DictReader(io.StringIO(metadata_review_csv(items))))
+        self.assertEqual(int(rows[0]["Current Title Length"]), 14)
+        self.assertEqual(int(rows[0]["Proposed Title Length"]), 8)
+        self.assertEqual(int(rows[1]["Current Title Length"]), 0)
+        self.assertEqual(int(rows[1]["Proposed Title Length"]), 0)
 
     def test_sanitize_cell(self):
         self.assertEqual(sanitize_cell("=cmd()"), "'=cmd()")
@@ -218,6 +231,18 @@ class ClientWorkbookTests(unittest.TestCase):
             workbook.save(path)
             reloaded = load_workbook(path)
         self.assertIn("Title Tags", reloaded.sheetnames)
+
+    def test_workbook_title_counts_ignore_stale_saved_lengths(self):
+        workbook = build_client_workbook("Test Property", metadata_items=[
+            {**CsvProfileTests.ITEM, "current_title": "🏡 Homes | Café", "proposed_title": "  Home  ",
+             "current_title_length": 999, "title_length": 999},
+            {"url": "https://example.com/missing", "current_title": None},
+        ])
+        titles = workbook["Title Tags"]
+        self.assertEqual(titles.cell(row=6, column=4).value, 14)
+        self.assertEqual(titles.cell(row=6, column=6).value, 8)
+        self.assertEqual(titles.cell(row=7, column=4).value, 0)
+        self.assertEqual(titles.cell(row=7, column=6).value, 0)
 
     def test_formula_values_are_sanitized_in_tables(self):
         workbook = build_client_workbook(

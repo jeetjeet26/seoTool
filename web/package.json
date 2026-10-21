@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:report-chat": "node --test tests/report-chat.test.mjs tests/report-chat-model.test.mjs tests/report-chat-persistence.test.mjs"
+    "test:report-chat": "node --test tests/report-chat.test.mjs tests/report-chat-model.test.mjs tests/report-chat-persistence.test.mjs tests/text-metrics.test.mjs tests/report-chat-client.test.mjs tests/report-chat-pending.test.mjs tests/data-auth.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

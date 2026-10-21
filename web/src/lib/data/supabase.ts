@@ -1,5 +1,7 @@
 import "server-only";
 
+import { redirect } from "next/navigation";
+import { getCurrentProfile } from "@/lib/auth/user";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 import type {
@@ -15,6 +17,12 @@ import type {
   ToolRun,
   ToolRunItem,
 } from "./types";
+
+async function authenticatedClient() {
+  // Layouts may be reused during navigation; gate each data read as well.
+  if (!await getCurrentProfile()) redirect("/login");
+  return createSupabaseServerClient();
+}
 
 type ClientRow = {
   intake?: { main_contact?: string; onboarding?: Client["onboarding"] };
@@ -184,7 +192,7 @@ function mapSeverity(value: string): Finding["severity"] {
 
 export const supabaseData: DataProvider = {
   async getClients(): Promise<Client[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("clients")
       .select("id,name,website_url,notes,intake,audits(id,status)")
@@ -211,7 +219,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getAudits(): Promise<Audit[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("audits")
       .select(
@@ -228,7 +236,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getFindings(auditId: string): Promise<Finding[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const rows: FindingRow[] = [];
     const batchSize = 1000;
     for (let from = 0; ; from += batchSize) {
@@ -264,7 +272,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getTasks(auditId: string): Promise<Task[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tasks")
       .select(
@@ -288,7 +296,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getAuditEvents(auditId: string): Promise<AuditEvent[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("audit_events")
       .select("id,event_type,message,created_at")
@@ -306,7 +314,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getToolRuns(): Promise<ToolRun[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tool_runs")
       .select(TOOL_RUN_COLUMNS)
@@ -317,7 +325,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getToolRun(id: string): Promise<ToolRun | undefined> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tool_runs")
       .select(TOOL_RUN_COLUMNS)
@@ -328,7 +336,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getToolRunItems(runId: string): Promise<ToolRunItem[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tool_run_items")
       .select(
@@ -352,7 +360,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getToolArtifacts(runId: string): Promise<ToolArtifact[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tool_artifacts")
       .select("id,run_id,kind,object_path,content_type,byte_size")
@@ -371,7 +379,7 @@ export const supabaseData: DataProvider = {
   },
 
   async getToolRunsForAudit(auditId: string): Promise<ToolRun[]> {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("tool_runs")
       .select(TOOL_RUN_COLUMNS)

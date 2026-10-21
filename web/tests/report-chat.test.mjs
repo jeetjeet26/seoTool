@@ -183,3 +183,69 @@ test("references stay bounded for large nested Lighthouse evidence", () => {
   assert.ok(refs["/summary/page_experience/0/performance_issues"]);
   assert.ok(Object.keys(refs).length < 100);
 });
+
+test("array references support repeated appends and the snapshot's end index", () => {
+  const original = fixture();
+  const refs = editReferences(original);
+  const path = "/summary/keyword_strategy";
+  const first = { ...original.summary.keyword_strategy[0], keyword: "first addition" };
+  const second = { ...first, keyword: "second addition" };
+  assert.equal(refs[`${path}/-`], valueReference(null));
+  assert.equal(refs[`${path}/1`], valueReference(null));
+  const { next, changes } = applyEdits(original, [first, second].map(row => ({
+    op: "add", path: `${path}/-`, before: refs[`${path}/-`], value: JSON.stringify(row),
+  })));
+  assert.deepEqual(next.summary.keyword_strategy, [...original.summary.keyword_strategy, first, second]);
+  assert.equal(changes.length, 2);
+  assert.equal(applyEdits(original, [{ op: "add", path: `${path}/1`, before: refs[`${path}/1`], value: JSON.stringify(first) }]).next.summary.keyword_strategy.length, 2);
+  assert.equal(original.summary.keyword_strategy.length, 1);
+});
+
+test("append references do not bypass existing-row or sequential optimistic checks", () => {
+  const original = fixture();
+  const refs = editReferences(original);
+  const path = "/summary/keyword_strategy";
+  const row = JSON.stringify({ ...original.summary.keyword_strategy[0], keyword: "addition" });
+  for (const before of [refs[path], refs[`${path}/0`]]) {
+    assert.throws(() => applyEdits(original, [{ op: "add", path: `${path}/-`, before, value: row }]), /original text did not match/);
+  }
+  const first = { op: "add", path: `${path}/1`, before: refs[`${path}/1`], value: row };
+  assert.throws(() => applyEdits(original, [first, first]), /original text did not match/);
+  assert.throws(() => applyEdits(original, [{ op: "replace", path: `${path}/0`, before: refs[`${path}/-`], value: row }]), /original text did not match/);
+  const changed = structuredClone(original);
+  changed.summary.keyword_strategy[0].volume = 25;
+  assert.throws(() => applyEdits(changed, [{ op: "remove", path: `${path}/0`, before: refs[`${path}/0`], value: "null" }]), /original text did not match/);
+  assert.equal(original.summary.keyword_strategy.length, 1);
+});
+
+test("malformed append originals identify the exact reference and reject mixed edits atomically", () => {
+  const original = fixture();
+  const snapshot = structuredClone(original);
+  const path = "/summary/keyword_strategy/-";
+  const newId = "22222222-2222-4222-8222-222222222222";
+  const finding = { ...original.findings[id], title: "Analyst note", category: "account_lead", severity: "info" };
+  const edits = [
+    edit("/summary/content_recommendations/0/proposed_title", "Existing title", "Updated title"),
+    edit(`/findings/${newId}`, null, finding, "add"),
+    { op: "add", path, before: "{invalid original reference}", value: JSON.stringify(original.summary.keyword_strategy[0]) },
+  ];
+  assert.throws(() => applyEdits(original, edits), error =>
+    /invalid original values/.test(error.message) && error.message.includes(path) && error.message.includes(valueReference(null)));
+  assert.deepEqual(original, snapshot);
+  edits[2].before = editReferences(original)[path];
+  assert.equal(applyEdits(original, edits).changes.length, 3);
+});
+
+test("keyword positions can become unknown without allowing null in required numeric fields", () => {
+  const original = fixture();
+  original.summary.keyword_strategy[0].position = 24;
+  const path = "/summary/keyword_strategy/0/position";
+  const unknown = applyEdits(original, [edit(path, 24, null)]).next;
+  assert.equal(unknown.summary.keyword_strategy[0].position, null);
+  assert.equal(applyEdits(unknown, [edit(path, null, 10)]).next.summary.keyword_strategy[0].position, 10);
+  assert.equal(original.summary.keyword_strategy[0].position, 24);
+  assert.throws(() => applyEdits(original, [edit("/summary/keyword_strategy/0/volume", 10, null)]), /data type/);
+  assert.throws(() => applyEdits(original, [edit(path, 24, "unknown")]), /data type/);
+  original.summary.keyword_strategy[0].evidence = { position: 24 };
+  assert.throws(() => applyEdits(original, [edit("/summary/keyword_strategy/0/evidence/position", 24, null)]), /data type/);
+});

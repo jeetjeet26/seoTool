@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_REVIEW_CHARACTERS, reviewMessage } from "@/lib/report-chat/input";
+import { readReportChatResponse, reportChatErrorMessage, ReportChatResponseError } from "@/lib/report-chat/client";
 import type { ChatEntry } from "@/lib/report-chat/server";
+
+type ChatState = { entries: ChatEntry[]; configured: boolean; exportState: string };
 
 export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string; reportName: string; reportUrl: string }) {
   const router = useRouter();
@@ -26,10 +29,9 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
     if (!open) return;
     const controller = new AbortController();
     fetch(endpoint, { signal: controller.signal }).then(async (response) => {
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Chat history could not be loaded.");
+      const result = await readReportChatResponse<ChatState>(response, "history");
       setEntries(result.entries); setConfigured(result.configured); setExportState(result.exportState); setError("");
-    }).catch((reason) => { if (!controller.signal.aborted) setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }).catch((reason) => { if (!controller.signal.aborted) setError(reportChatErrorMessage(reason, "history")); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     input.current?.focus();
     return () => controller.abort();
   }, [open, endpoint]);
@@ -50,7 +52,7 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
       try {
         const response = await fetch(endpoint);
         if (!response.ok) return;
-        const result = await response.json();
+        const result = await readReportChatResponse<ChatState>(response, "history");
         setExportState(result.exportState);
         if (result.exportState === "ready") router.refresh();
       } catch { /* Keep the saved edit visible while the network recovers. */ }
@@ -68,12 +70,14 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
     setBusy(true); setError(""); setPendingPrompt(draft.trim());
     try {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) });
-      const result = await response.json();
-      if (!response.ok) { if (response.status < 500) retry.current = null; throw new Error(result.error ?? "The edit could not be saved."); }
+      const result = await readReportChatResponse<ChatEntry>(response, "submit");
       setEntries((current) => current.some((item) => item.id === result.id) ? current : [...current, result]);
       setDraft(""); setSelection(""); retry.current = null;
       if (result.changes.length) { setExportState("pending"); router.refresh(); }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "The request could not be completed. Your draft is preserved; send it again to retry safely."); }
+    } catch (reason) {
+      if (reason instanceof ReportChatResponseError && !reason.retryable) retry.current = null;
+      setError(reportChatErrorMessage(reason, "submit"));
+    }
     finally { setBusy(false); setPendingPrompt(""); input.current?.focus(); }
   }
   async function importReview(file: File) {
@@ -92,11 +96,10 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
     setBusy(true); setError("");
     try {
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "undo", eventId }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "Could not undo this edit.");
+      await readReportChatResponse(response, "undo");
       setEntries((current) => current.map((item) => item.id === eventId ? { ...item, undoable: false } : item));
       setExportState("pending"); router.refresh();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not undo this edit."); }
+    } catch (reason) { setError(reportChatErrorMessage(reason, "undo")); }
     finally { setBusy(false); }
   }
   return <aside className={`report-chat${open ? " is-open" : ""}`} aria-label="Report editing assistant">
@@ -105,8 +108,8 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
       <div className="report-chat-target"><span className="report-chat-dot"/><div><small>Targeting this report only</small><strong>{reportName}</strong><span>{reportUrl}</span><small>Report {auditId.slice(0, 8)}</small></div></div>
       <div className="report-chat-log" ref={log} role="log" aria-live="polite" aria-relevant="additions text">
         {loading ? <p>Loading conversation…</p> : <>
-          {!entries.length && <div className="report-chat-welcome"><strong>What would you like to change?</strong><p>Paste or attach a review to edit keywords, titles, descriptions, content, or add technical findings across the report. Highlight text in the report to include it with your request.</p><div className="report-chat-examples">{["Replace a keyword…", "Change the alt text for…", "Rewrite the executive summary…"].map((example) => <button key={example} onClick={() => { setDraft(example.replace("…", " ")); input.current?.focus(); }}>{example}</button>)}</div><small>Specific requests are saved directly to this report. Every change can be reviewed below and undone.</small></div>}
-          {entries.map((item) => <div key={item.id} className="report-chat-turn"><div className="report-chat-user">{item.prompt}</div><div className="report-chat-assistant"><p>{item.message}</p>{item.changes.length === 0 && <small>No report changes saved.</small>}{item.changes.length > 0 && <><details><summary>{item.changes.length} change{item.changes.length === 1 ? "" : "s"} · {item.undoable ? "Saved" : "Undone"}</summary>{item.changes.map((change, index) => <div className="report-chat-change" key={index}><small>{change.path.replace(/^\/summary\//, "").replaceAll("/", " › ").replaceAll("_", " ")}</small><del>{display(change.before)}</del><ins>{display(change.after)}</ins></div>)}</details>{item.undoable && <button className="report-chat-undo" disabled={busy} onClick={() => undo(item.id)}>Undo this edit</button>}</>}</div></div>)}
+          {!entries.length && <div className="report-chat-welcome"><strong>What would you like to change?</strong><p>Paste or attach a review to edit keywords, titles, descriptions, content, or technical findings in this saved report. Include verified facts and measurements you want applied. Highlight text in the report to include it with your request.</p><div className="report-chat-examples">{["Replace a keyword…", "Change the alt text for…", "Rewrite the executive summary…"].map((example) => <button key={example} onClick={() => { setDraft(example.replace("…", " ")); input.current?.focus(); }}>{example}</button>)}</div><small>Specific requests are saved directly to this report. Every change can be reviewed below and undone.</small></div>}
+          {entries.map((item) => <div key={item.id} className="report-chat-turn"><div className="report-chat-user">{item.prompt}</div><div className="report-chat-assistant"><p>{item.message}</p>{!!item.pending?.length && <div><strong>Still pending</strong><ul>{item.pending.map((task, index) => <li key={index}>{task}</li>)}</ul></div>}{item.changes.length === 0 && <small>No report changes saved.</small>}{item.changes.length > 0 && <><details><summary>{item.changes.length} change{item.changes.length === 1 ? "" : "s"} · {item.undoable ? "Saved" : "Undone"}</summary>{item.changes.map((change, index) => <div className="report-chat-change" key={index}><small>{change.path.replace(/^\/summary\//, "").replaceAll("/", " › ").replaceAll("_", " ")}</small><del>{display(change.before)}</del><ins>{display(change.after)}</ins></div>)}</details>{item.undoable && <button className="report-chat-undo" disabled={busy} onClick={() => undo(item.id)}>Undo this edit</button>}</>}</div></div>)}
         </>}
         {pendingPrompt && <div className="report-chat-turn"><div className="report-chat-user">{pendingPrompt}</div><p className="report-chat-thinking">Reading this report and preparing your edit…</p></div>}
       </div>
@@ -115,9 +118,10 @@ export function ReportChat({ auditId, reportName, reportUrl }: { auditId: string
       {error && <p className="report-chat-error" role="alert">{error}</p>}
       {!configured && <p className="report-chat-error">Add OPENAI_API_KEY to the server configuration to enable chat.</p>}
       <form className="report-chat-compose" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        <small id="report-chat-capabilities">Edits this saved report. Live website checks and Semrush research are unavailable here; paste verified facts or metrics to apply them.</small>
         {selection && <div className="report-chat-selection"><span>Selected: {selection}</span><button type="button" aria-label="Remove selected text" onClick={() => setSelection("")}>×</button></div>}
         <label className="sr-only" htmlFor="report-chat-message">Describe your report edit</label>
-        <textarea id="report-chat-message" ref={input} value={draft} disabled={busy || !configured} placeholder="Paste your review findings and describe the changes to apply…" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}/>
+        <textarea id="report-chat-message" aria-describedby="report-chat-capabilities" ref={input} value={draft} disabled={busy || !configured} placeholder="Paste your review findings and describe the changes to apply…" onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}/>
         <input ref={fileInput} type="file" accept=".md,.txt,text/markdown,text/plain" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void importReview(file); }}/>
         <div><button type="button" disabled={busy || loading || !configured} onClick={() => fileInput.current?.click()}>Attach review (.md / .txt)</button><small>{draft.length.toLocaleString()} / 100,000 characters</small></div>
         <div><small>Enter to send · Shift+Enter for a new line</small><button className="button primary" disabled={busy || loading || !configured || !draft.trim() || draft.length > MAX_REVIEW_CHARACTERS}>{busy ? "Working…" : "Send edit"}</button></div>

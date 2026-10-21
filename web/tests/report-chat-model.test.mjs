@@ -20,7 +20,7 @@ const retainedPlan = document => ({ message: "Kept the four selected pages uncha
   before: valueReference(document.summary.content_recommendations),
   value: JSON.stringify(document.summary.content_recommendations.slice(0, 4).map(row => row.url)),
 }] });
-const response = plan => ({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(plan) }] }] });
+const response = plan => ({ status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify({ pending: [], ...plan }) }] }] });
 async function mockModel(t, handler) {
   const oldKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-only";
@@ -90,4 +90,45 @@ test("planner supports supplied review findings and keeps document-only instruct
   assert.equal(bodies[0].input.at(-1).content, prompt);
   assert.match(bodies[0].instructions, /no live website, Semrush/);
   assert.match(Object.values(applyEdits(document, plan.edits).next.findings)[0].recommendation, /Document only/);
+});
+
+test("the four-change verification request repairs a malformed append atomically", async t => {
+  const document = fixture();
+  document.summary.executive_summary = "Existing summary.";
+  document.summary.content_recommendations[0].rationale = "Existing rationale.";
+  document.summary.keyword_strategy = [];
+  const original = structuredClone(document);
+  const bodies = await mockModel(t, (body, attempt) => {
+    const context = JSON.parse(body.input[0].content.split("\n").slice(1).join("\n"));
+    const edits = [
+      { op: "replace", path: "/summary/executive_summary", before: context.before_refs["/summary/executive_summary"], value: "Existing summary. Deployment verification 20261021: persistence check." },
+      { op: "replace", path: "/summary/content_recommendations/0/rationale", before: context.before_refs["/summary/content_recommendations/0/rationale"], value: "Existing rationale. Deployment verification 20261021: rationale check." },
+      { op: "add", path: "/summary/keyword_strategy/-", before: attempt === 1 ? "{invalid reference}" : context.before_refs["/summary/keyword_strategy/-"], value: JSON.stringify({ keyword: "cresswind deployment verification 20261021", source: "analyst_provided_metrics_pending", volume: 0, cpc: 0, difficulty: 0, competition: 0, score: 0, position: null, intent: "informational", assigned_page: target.url, evidence: { note: "Unknown metrics; zero placeholders are not measured zeros." } }) },
+      { op: "add", path: `/findings/${context.new_finding_ids[0]}`, before: "null", value: JSON.stringify({ title: "Deployment verification 20261021 — temporary analyst note", severity: "info", category: "account_lead", page_url: "", resource_url: "", description: "Analyst-provided verification note to confirm additions persist after reload and reach Excel. This is not an SEO defect.", recommendation: "Document only — account lead review; do not implement. Remove via Undo after verification." }) },
+    ];
+    return response({ message: "Applied the four temporary changes only.", edits });
+  });
+  const prompt = "Apply only four changes: append summary and rationale verification sentences, add a pending-metrics keyword, add a document-only finding.\n" + "Reference appendix: no additional edits.\n".repeat(70);
+  const plan = await planEdits(document, target, [], prompt);
+  assert.equal(bodies.length, 2);
+  assert.match(bodies[1].input.at(-1).content, /\/summary\/keyword_strategy\/-/);
+  assert.match(bodies[1].input.at(-1).content, new RegExp(valueReference(null)));
+  assert.equal(bodies[0].input.at(-1).content, prompt);
+  assert.deepEqual(document, original);
+  const result = applyEdits(document, plan.edits);
+  assert.equal(result.changes.length, 4);
+  assert.equal(result.next.summary.keyword_strategy.length, 1);
+  assert.equal(Object.keys(result.next.findings).length, 1);
+  assert.deepEqual(result.next.summary.content_recommendations.slice(1), original.summary.content_recommendations.slice(1));
+});
+
+test("partial edits return explicit pending work separately from the success message", async t => {
+  const document = fixture();
+  const pending = ["Semrush volume for the added keywords requires verified measurements.", "Homepage intro needs the existing paragraph before it can be edited."];
+  const bodies = await mockModel(t, () => response({ ...retainedPlan(document), pending }));
+  const plan = await planEdits(document, target, [], "Could you keep these four pages, edit the homepage intro and pull keyword volume?");
+  assert.deepEqual(plan.pending, pending);
+  assert.ok(bodies[0].text.format.schema.required.includes("pending"));
+  const context = JSON.parse(bodies[0].input[0].content.split("\n").slice(1).join("\n"));
+  assert.deepEqual(context.content_page_index[0], { path: "/summary/content_recommendations/0", url: document.summary.content_recommendations[0].url });
 });

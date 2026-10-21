@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { isSupabaseConfigured } from "@/lib/config";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { characterCount } from "@/lib/text-metrics";
 
 /**
  * Approval-gated exports for tool runs. Every profile is generated from
@@ -125,6 +126,7 @@ export async function GET(
             "URL",
             "Keywords",
             "Current Title",
+            "Current Title Length",
             "Approved Title",
             "Title Length",
             "Current Meta Description",
@@ -145,11 +147,12 @@ export async function GET(
                   : "",
               ),
               sanitizeCell(text(payload, "current_title")),
+              String(characterCount(text(payload, "current_title"))),
               sanitizeCell(title),
-              String(title.length),
+              String(characterCount(title)),
               sanitizeCell(text(payload, "current_meta_description")),
               sanitizeCell(description),
-              String(description.length),
+              String(characterCount(description)),
               sanitizeCell(text(payload, "current_h1")),
               sanitizeCell(text(payload, "proposed_h1")),
             ];

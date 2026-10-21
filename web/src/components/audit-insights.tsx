@@ -5,6 +5,7 @@ import type {
   PageExperience,
 } from "@/lib/data/types";
 import { KeywordStrategyReview } from "@/components/keyword-strategy-review";
+import { characterCount } from "@/lib/text-metrics";
 
 type ApprovedTarget = {
   id: string;
@@ -76,6 +77,7 @@ export function AuditInsights({
       recommendations={recommendations}
       currentKey="current_title"
       proposedKey="proposed_title"
+      includeUnchanged
     />}
     {recommendations.length > 0 && <RecommendationSection
       title="Meta description recommendations"
@@ -243,22 +245,23 @@ function RecommendationSection({
     return proposed && proposed !== current;
   });
   const rows = includeUnchanged ? recommendations : changed;
-  const showWordCounts = proposedKey === "proposed_title" || proposedKey === "proposed_meta_description";
+  const showTextCounts = proposedKey === "proposed_title" || proposedKey === "proposed_meta_description";
   return <section className="card report-section">
     <div className="section-title"><div><h2>{title}</h2><p>{includeUnchanged ? `${recommendations.length} pages listed. ${changed.length} material changes.` : `${changed.length} material changes. Unchanged values are omitted.`} {description}</p></div></div>
     {rows.length
       ? <div className="table-wrap recommendation-table"><table><thead><tr><th>URL</th><th>Target keywords</th><th>Current</th><th>Recommended</th></tr></thead><tbody>{rows.map((item) => {
         const current = String(item[currentKey] ?? "");
         const proposed = String(item[proposedKey] ?? "");
-        return <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}{showWordCounts && <WordCount text={current}/>}</td><td><WordDiff current={current} proposed={proposed}/>{showWordCounts && <WordCount text={proposed}/>}</td></tr>;
+        return <tr key={`${title}-${item.url}`}><td className="url-cell"><ReportLink url={item.url}/></td><td>{item.keywords?.join(", ") || "—"}</td><td>{item[currentKey] || "Not present"}{showTextCounts && <TextCounts text={current}/>}</td><td><WordDiff current={current} proposed={proposed}/>{showTextCounts && <TextCounts text={proposed}/>}</td></tr>;
       })}</tbody></table></div>
       : <EmptyState text="No recommendations were generated."/>}
   </section>;
 }
 
-function WordCount({ text }: { text: string }) {
-  const count = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
-  return <small style={{ display: "block", marginTop: 8, color: "var(--muted)" }}>{count} {count === 1 ? "word" : "words"}</small>;
+function TextCounts({ text }: { text: string }) {
+  const characters = characterCount(text);
+  const words = text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+  return <small style={{ display: "block", marginTop: 8, color: "var(--muted)" }}>{characters} {characters === 1 ? "character" : "characters"} · {words} {words === 1 ? "word" : "words"}</small>;
 }
 
 function OnPageRecommendations({ recommendations }: { recommendations: ContentRecommendation[] }) {

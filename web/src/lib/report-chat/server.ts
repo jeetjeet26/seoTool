@@ -12,7 +12,7 @@ function database() {
   return client ??= postgres(process.env.SUPABASE_DB_URL, { max: 3, idle_timeout: 20, connect_timeout: 10, prepare: false });
 }
 type Sql = postgres.Sql | postgres.TransactionSql;
-export type ChatEntry = { id: string; requestId: string; prompt: string; message: string; changes: Change[]; createdAt: string; undoable: boolean };
+export type ChatEntry = { id: string; requestId: string; prompt: string; message: string; pending: string[]; changes: Change[]; createdAt: string; undoable: boolean };
 async function authorize(sql: Sql, userId: string) {
   // The existing app grants all internal analysts/admins access to all audits.
   // Recheck the database role before every direct SQL read/write.
@@ -48,7 +48,7 @@ async function load(sql: Sql, auditId: string, lock = false) {
   return { audit, document: { summary, findings } as ReportDocument };
 }
 function entry(row: postgres.Row): ChatEntry {
-  return { id: row.id, requestId: row.payload.requestId, prompt: row.payload.prompt, message: row.message ?? "", changes: row.payload.changes ?? [], createdAt: new Date(row.created_at).toISOString(), undoable: !!row.payload.before && !row.payload.undone };
+  return { id: row.id, requestId: row.payload.requestId, prompt: row.payload.prompt, message: row.message ?? "", pending: row.payload.pending ?? [], changes: row.payload.changes ?? [], createdAt: new Date(row.created_at).toISOString(), undoable: !!row.payload.before && !row.payload.undone };
 }
 async function recent(sql: Sql, auditId: string) {
   return sql`select id, message, (payload - 'before') || jsonb_build_object('before', payload ? 'before') as payload, created_at from public.audit_events where audit_id = ${auditId}::uuid and event_type = 'report_chat' order by created_at desc, id desc limit 30`;
@@ -104,7 +104,7 @@ export async function sendChat(auditId: string, userId: string, prompt: string, 
   const historyRows = (await recent(sql, auditId)).reverse();
   const history: Conversation[] = historyRows.flatMap((row) => [
     { role: "user" as const, content: String(row.payload.prompt) },
-    { role: "assistant" as const, content: `${row.message}${row.payload.undone ? " [This edit was undone.]" : ""}` },
+    { role: "assistant" as const, content: `${row.message}${row.payload.pending?.length ? ` Pending: ${row.payload.pending.join("; ")}` : ""}${row.payload.undone ? " [This edit was undone.]" : ""}` },
   ]);
   const plan = await planEdits(document, { id: auditId, name: String((audit.summary.property_context ?? {}).name || audit.name), url: audit.target_url }, history, prompt);
   const { next, changes } = applyEdits(document, plan.edits);
@@ -118,7 +118,7 @@ export async function sendChat(auditId: string, userId: string, prompt: string, 
     if (revision(current.document) !== revision(document)) throw new ChatError("The report changed while I was working. No edits were applied. Please send your request again.", 409);
     const id = randomUUID();
     if (changes.length) await persist(tx, auditId, document, next, id);
-    const payload = { requestId, prompt, model: REPORT_MODEL, changes, ...(changes.length ? { before: document, afterRevision: revision(next) } : {}) };
+    const payload = { requestId, prompt, model: REPORT_MODEL, pending: plan.pending, changes, ...(changes.length ? { before: document, afterRevision: revision(next) } : {}) };
     const rows = await tx`insert into public.audit_events (id, audit_id, event_type, message, payload, actor_id) values (${id}::uuid, ${auditId}::uuid, 'report_chat', ${plan.message}, ${tx.json(payload as postgres.JSONValue)}, ${userId}::uuid) returning id, message, payload, created_at`;
     return entry(rows[0]);
   });

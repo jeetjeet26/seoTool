@@ -35,6 +35,10 @@ export function editReferences(document: ReportDocument): Record<string, string>
   const references: Record<string, string> = {};
   function record(path: string, value: Json) {
     references[path] = valueReference(value);
+    if (Array.isArray(value)) {
+      references[`${path}/-`] = valueReference(null);
+      references[`${path}/${value.length}`] = valueReference(null);
+    }
   }
   for (const [key, value] of Object.entries(document.summary)) {
     if (!summaryKeys.has(key)) continue;
@@ -167,7 +171,9 @@ export function applyEdits(document: ReportDocument, edits: Edit[]) {
     if (edit.before !== old && /^sha256:[a-f0-9]{64}$/.test(edit.before)) originalMatches = edit.before === valueReference(old);
     else {
       let expected: Json;
-      try { expected = typeof old === "string" ? edit.before : JSON.parse(edit.before); } catch { throw new ChatError("The model returned invalid original values. Please try again."); }
+      try { expected = typeof old === "string" ? edit.before : JSON.parse(edit.before); } catch {
+        throw new ChatError(`The model returned invalid original values at ${edit.path}. Use before ${valueReference(old)} for this value.`);
+      }
       originalMatches = canonical(old) === canonical(expected);
     }
     if (edit.op !== "add" && !exists) throw new ChatError("The requested report item no longer exists.", 409);
@@ -192,7 +198,9 @@ export function applyEdits(document: ReportDocument, edits: Edit[]) {
       else parent[index] = value;
     } else if (edit.op === "remove") delete record[key];
     else {
-      if (exists && old !== null && (Array.isArray(old) !== Array.isArray(value) || typeof old !== typeof value || value === null)) throw new ChatError("An edit cannot change the content's data type.");
+      const nullableNumber = path[0] === "summary" && path.length === 4 && rowTypes[path[1]]?.[key] === "nullableNumber"
+        && matches(old, "nullableNumber") && matches(value, "nullableNumber");
+      if (exists && old !== null && !nullableNumber && (Array.isArray(old) !== Array.isArray(value) || typeof old !== typeof value || value === null)) throw new ChatError("An edit cannot change the content's data type.");
       if (exists) compatible(old, value);
       record[key] = value;
     }
