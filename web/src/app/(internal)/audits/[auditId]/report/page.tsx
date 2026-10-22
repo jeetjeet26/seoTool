@@ -9,6 +9,7 @@ import { FindingsTable, ReportActions } from "@/components/report-controls";
 import { data } from "@/lib/data";
 import type { AuditSummary } from "@/lib/data/types";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { AuditArchiveNotice } from "@/components/audit-archive-notice";
 
 export default async function ReportPage({ params }: { params: Promise<{ auditId: string }> }) {
   const { auditId } = await params;
@@ -52,6 +53,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     <RunAutoRefresh active={summary.report_edit?.export_state === "pending"}/>
     <div className="breadcrumbs"><Link href={`/audits/${auditId}`}>Audit {auditId}</Link><Icon name="chevron"/><span>Report</span></div>
     <PageHeader eyebrow="Technical SEO report" title={summary.property_context?.name || audit.clientName} description={`${summary.property_context?.location ? `${summary.property_context.location} · ` : ""}Prepared ${preparedDate} · ${audit.pages} pages analyzed`} action={<ReportActions auditId={auditId}/>}/>
+    <AuditArchiveNotice archive={audit.archive}/>
     <section className="report-hero">
       <div><h2>Executive summary</h2><p>{executiveSummary(summary, findings.length)}</p></div>
     </section>

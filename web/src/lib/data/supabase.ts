@@ -42,6 +42,13 @@ type AuditRow = {
   progress: number;
   page_limit: number;
   summary: AuditSummary | null;
+  options?: {
+    audit_archive?: {
+      archived_at?: unknown;
+      reason?: unknown;
+      replacement_audit_id?: unknown;
+    } | null;
+  } | null;
   created_at: string;
   updated_at: string;
   failure_message: string | null;
@@ -106,6 +113,9 @@ type ToolRunItemRow = {
 const TOOL_RUN_COLUMNS =
   "id,client_id,audit_id,tool_type,name,status,current_stage,progress,options,summary,failure_message,created_at,updated_at,clients(name)";
 
+const AUDIT_COLUMNS =
+  "id,client_id,target_url,status,current_stage,progress,page_limit,summary,options,created_at,updated_at,failure_message,published_at,clients(name)";
+
 function mapToolRun(row: ToolRunRow): ToolRun {
   return {
     id: row.id,
@@ -144,6 +154,9 @@ function pagesFromSummary(
 }
 
 function mapAudit(row: AuditRow): Audit {
+  const archive = row.options?.audit_archive;
+  const archivedAt = archive?.archived_at;
+  const replacementId = archive?.replacement_audit_id;
   return {
     id: row.id,
     clientId: row.client_id,
@@ -157,6 +170,15 @@ function mapAudit(row: AuditRow): Audit {
     stage: Math.min(5, Math.max(0, Math.round(row.progress / 20))),
     failedReason: row.failure_message ?? undefined,
     summary: row.summary ?? undefined,
+    archive: typeof archivedAt === "string" && Number.isFinite(Date.parse(archivedAt))
+      ? {
+        archivedAt,
+        reason: typeof archive?.reason === "string" ? archive.reason : undefined,
+        replacementAuditId: typeof replacementId === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(replacementId)
+          ? replacementId
+          : undefined,
+      }
+      : undefined,
   };
 }
 
@@ -218,21 +240,29 @@ export const supabaseData: DataProvider = {
     return clients.find((client) => client.id === id);
   },
 
-  async getAudits(): Promise<Audit[]> {
+  async getAudits(options = {}): Promise<Audit[]> {
     const supabase = await authenticatedClient();
     const { data, error } = await supabase
       .from("audits")
-      .select(
-        "id,client_id,target_url,status,current_stage,progress,page_limit,summary,created_at,updated_at,failure_message,published_at,clients(name)",
-      )
+      .select(AUDIT_COLUMNS)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return ((data ?? []) as unknown as AuditRow[]).map(mapAudit);
+    return ((data ?? []) as unknown as AuditRow[])
+      .map(mapAudit)
+      .filter((audit) => options.includeArchived || !audit.archive);
   },
 
   async getAudit(id: string): Promise<Audit | undefined> {
-    const audits = await this.getAudits();
-    return audits.find((audit) => audit.id === id);
+    // Archiving affects listings only. Existing direct report links must remain valid.
+    const supabase = await authenticatedClient();
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) return undefined;
+    const { data, error } = await supabase
+      .from("audits")
+      .select(AUDIT_COLUMNS)
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapAudit(data as unknown as AuditRow) : undefined;
   },
 
   async getFindings(auditId: string): Promise<Finding[]> {

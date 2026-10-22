@@ -6,14 +6,24 @@ import { data } from "@/lib/data";
 
 export const metadata = { title: "Audits" };
 
-export default async function AuditsPage() {
-  const audits = await data.getAudits();
+export default async function AuditsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string | string[] }>;
+}) {
+  const [{ view }, allAudits] = await Promise.all([
+    searchParams,
+    data.getAudits({ includeArchived: true }),
+  ]);
+  const showArchived = view === "archived";
+  const audits = allAudits.filter((audit) => showArchived ? Boolean(audit.archive) : !audit.archive);
+  const archivedCount = allAudits.filter((audit) => audit.archive).length;
 
   return (
     <>
       <PageHeader
-        title="Audits"
-        description="Review current and completed site scans."
+        title={showArchived ? "Archived audits" : "Audits"}
+        description={showArchived ? "Earlier reports remain available with their history and shared links." : "Review current and completed site scans."}
         action={
           <Link className="button primary" href="/audits/new">
             <Icon name="plus" />
@@ -21,6 +31,10 @@ export default async function AuditsPage() {
           </Link>
         }
       />
+      <nav className="action-row" aria-label="Audit views">
+        <Link className="button secondary" href="/audits" aria-current={!showArchived ? "page" : undefined}>Current audits</Link>
+        <Link className="button secondary" href="/audits?view=archived" aria-current={showArchived ? "page" : undefined}>Archived ({archivedCount})</Link>
+      </nav>
       <section className="card">
         {audits.length ? (
           <div className="table-wrap">
@@ -42,6 +56,9 @@ export default async function AuditsPage() {
                     <td>
                       <strong>{audit.clientName}</strong>
                       <small>{audit.url}</small>
+                      {audit.archive?.replacementAuditId && (
+                        <small><Link className="text-link" href={`/audits/${audit.archive.replacementAuditId}/report`}>Open current report</Link></small>
+                      )}
                     </td>
                     <td>
                       <Status value={audit.status} />
@@ -64,8 +81,8 @@ export default async function AuditsPage() {
           </div>
         ) : (
           <div className="empty">
-            <strong>No audits yet</strong>
-            <p>Create an audit after adding your first client.</p>
+            <strong>{showArchived ? "No archived audits" : "No audits yet"}</strong>
+            <p>{showArchived ? "Archived reports will appear here." : "Create an audit after adding your first client."}</p>
           </div>
         )}
       </section>

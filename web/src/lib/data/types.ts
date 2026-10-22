@@ -202,6 +202,11 @@ export interface Audit {
   stage: number;
   failedReason?: string;
   summary?: AuditSummary;
+  archive?: {
+    archivedAt: string;
+    reason?: string;
+    replacementAuditId?: string;
+  };
 }
 
 export interface Finding {
@@ -305,7 +310,7 @@ export interface ToolArtifact {
 export interface DataProvider {
   getClients(): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
-  getAudits(): Promise<Audit[]>;
+  getAudits(options?: { includeArchived?: boolean }): Promise<Audit[]>;
   getAudit(id: string): Promise<Audit | undefined>;
   getFindings(auditId: string): Promise<Finding[]>;
   getTasks(auditId: string): Promise<Task[]>;
