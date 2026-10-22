@@ -19,6 +19,9 @@
 .tool-review{padding:0 0 20px}
 .tool-review .filterbar{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);font-size:.78rem;color:var(--muted)}
 
+/* Inventory rows fill the available width without empty grid cells. */
+.insight-metrics.inventory-metrics{display:flex;flex-wrap:wrap;overflow:hidden;border-radius:0 0 10px 10px}.inventory-metrics>article{flex:1 1 155px;min-width:0}
+
 /* Grouped audit findings */
 .url-cell>details{min-width:260px}.url-cell summary{cursor:pointer;color:var(--green);font-weight:650;list-style-position:outside}.finding-url-list{display:grid;gap:7px;max-height:320px;overflow:auto;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:7px;background:#fafbfa}.finding-url-item{display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:8px}.finding-url-item input{margin-top:2px}.finding-url-list a{display:flex;align-items:flex-start;gap:4px;overflow-wrap:anywhere}.finding-url-list a svg{width:13px;height:13px;flex:0 0 auto}.finding-url-item.resolved a,.finding-url-item.resolved span{text-decoration:line-through;color:var(--muted)}
 

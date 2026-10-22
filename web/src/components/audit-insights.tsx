@@ -189,14 +189,10 @@ function SiteInventory({ summary }: { summary: AuditSummary }) {
     ["Sitemap URLs", inventory.sitemap_url_count],
     ["Sitemap-only URLs", inventory.sitemap_only_count],
     ["Crawl-only URLs", inventory.crawl_only_count],
-    ["Missing H1", inventory.missing_h1_count],
-    ["Duplicate titles", inventory.duplicate_title_count],
-    ["Duplicate descriptions", inventory.duplicate_description_count],
-    ["Images missing alt text", inventory.images_missing_alt_count],
   ] as const;
   return <section className="card report-section">
     <div className="section-title"><div><h2>Site inventory</h2><p>Crawl and XML sitemap reconciliation.</p></div></div>
-    <div className="insight-metrics">
+    <div className="insight-metrics inventory-metrics">
       {metrics.map(([label, value]) => <article key={label}><span>{label}</span><strong>{formatNumber(value)}</strong></article>)}
     </div>
   </section>;
