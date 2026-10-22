@@ -60,7 +60,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     <section className="category-grid" aria-label="SEO findings by category">
       {categoryCards.map((item) => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></article>)}
     </section>
-    <section className="card report-section"><div className="section-title"><div><h2>Prioritized findings</h2><p>Filter issues, open affected URLs, and select approved findings for task review.</p></div></div><FindingsTable key={summary.report_edit?.revision ?? "initial"} findings={findings} auditId={auditId}/></section>
+    <FindingsTable key={summary.report_edit?.revision ?? "initial"} findings={findings} auditId={auditId}/>
     <AuditInsights auditId={auditId} summary={summary} approvedTargets={(approvedTargets ?? []) as Array<{id:string;keyword:string;canonical_url:string;role:"primary"|"secondary"}>}/>
     <div className="two-column report-section">
       {summary.fair_housing_enabled && <section className="card"><div className="section-title"><div><h2>Fair Housing compliance</h2><p>This client has housing-specific safeguards enabled.</p></div></div><div className="recommendations"><article><span>Review status</span><strong>Human review required before publishing</strong><p>Confirm accuracy, brand voice, and legal suitability before implementation.</p></article></div></section>}

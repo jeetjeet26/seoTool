@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 
 import type { Finding } from "@/lib/data/types";
 
-import { Icon } from "./icons";
+import { AnalystReviewNotes, FindingInstances } from "./finding-instances";
+import { groupFindings, type FindingInstance as UrlOccurrence } from "@/lib/finding-groups";
 
 export function ClientFindingChecklist({
   findings,
@@ -29,10 +30,9 @@ export function ClientFindingChecklist({
     statusOverrides.forEach((status, id) => statuses.set(id, status));
     return statuses;
   }, [findings, statusOverrides]);
-  const groups = useMemo(
-    () => groupFindings(findings, statusById),
-    [findings, statusById],
-  );
+  const allGroups = useMemo(() => groupFindings(findings, statusById), [findings, statusById]);
+  const groups = allGroups.filter(group => group.kind !== "note");
+  const notes = allGroups.filter(group => group.kind === "note");
   const visible = filter === "All"
     ? groups
     : groups.filter((group) => group.severity === filter);
@@ -87,11 +87,11 @@ export function ClientFindingChecklist({
     }
   }
 
-  return <section className="card client-checklist">
+  return <><section className="card client-checklist">
     <div className="section-title">
       <div>
         <h2>SEO remediation checklist</h2>
-        <p>Open each group, implement the fix, then check off each distinct URL.</p>
+        <p>Open an issue, review its description, then check off each affected page, file, or link.</p>
       </div>
       <strong>{fixedUrls}/{totalUrls} fixed</strong>
     </div>
@@ -117,7 +117,7 @@ export function ClientFindingChecklist({
     </div>
     {message && <p className="inline-message finding-message" role="alert">{message}</p>}
     <div className="table-wrap">
-      <table>
+      <table className="client-finding-table">
         <thead><tr><th>Finding</th><th>Severity</th><th>Occurrences</th><th>Affected URLs</th></tr></thead>
         <tbody>
           {visible.map((group) => <tr key={group.key}>
@@ -125,84 +125,11 @@ export function ClientFindingChecklist({
             <td><span className={`severity severity-${group.severity.toLowerCase()}`}>{group.severity}</span></td>
             <td>{group.occurrences}</td>
             <td className="url-cell">
-              <details>
-                <summary>{group.resolvedCount}/{group.occurrences} fixed · View affected URLs</summary>
-                <div className="finding-url-list">
-                  {group.urls.map((occurrence) => {
-                    const pendingKey = `${group.key}:${occurrence.key}`;
-                    return <div key={occurrence.key} className={`finding-url-item${occurrence.resolved ? " resolved" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={occurrence.resolved}
-                        disabled={updating.has(pendingKey)}
-                        onChange={() => toggleUrl(group.key, occurrence)}
-                        aria-label={`Mark ${occurrence.url || "unreported URL"} ${occurrence.resolved ? "open" : "fixed"}`}
-                      />
-                      {occurrence.url
-                        ? <a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>
-                        : <span>URL not reported</span>}
-                    </div>;
-                  })}
-                </div>
-              </details>
+              <FindingInstances group={group} updatingKeys={updating} onToggle={instance => toggleUrl(group.key, instance)}/>
             </td>
           </tr>)}
         </tbody>
       </table>
     </div>
-  </section>;
-}
-
-type UrlOccurrence = {
-  key: string;
-  url: string;
-  findingIds: string[];
-  resolved: boolean;
-};
-
-type FindingGroup = Pick<Finding, "category" | "severity" | "title"> & {
-  key: string;
-  occurrences: number;
-  resolvedCount: number;
-  urls: UrlOccurrence[];
-};
-
-function groupFindings(
-  findings: Finding[],
-  statusById: Map<string, Finding["status"]>,
-): FindingGroup[] {
-  const groups = new Map<string, {
-    representative: Finding;
-    urls: Map<string, Finding[]>;
-  }>();
-
-  for (const finding of findings) {
-    const key = `${finding.category}\u0000${finding.ruleKey}\u0000${finding.title}`;
-    const group = groups.get(key) ?? {
-      representative: finding,
-      urls: new Map<string, Finding[]>(),
-    };
-    const url = finding.resourceUrl || finding.pageUrl;
-    const urlKey = url || `unreported:${finding.id}`;
-    group.urls.set(urlKey, [...(group.urls.get(urlKey) ?? []), finding]);
-    groups.set(key, group);
-  }
-
-  return [...groups.entries()].map(([key, group]) => {
-    const urls = [...group.urls.entries()].map(([urlKey, members]) => ({
-      key: urlKey,
-      url: members[0]?.resourceUrl || members[0]?.pageUrl || "",
-      findingIds: members.map((member) => member.id),
-      resolved: members.every((member) => statusById.get(member.id) === "resolved"),
-    }));
-    return {
-      key,
-      category: group.representative.category,
-      severity: group.representative.severity,
-      title: group.representative.title,
-      occurrences: urls.length,
-      resolvedCount: urls.filter((url) => url.resolved).length,
-      urls,
-    };
-  });
+  </section><AnalystReviewNotes groups={notes} updatingKeys={updating} onToggle={(group, instance) => toggleUrl(group.key, instance)}/></>;
 }

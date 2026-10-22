@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import type { Finding } from "@/lib/data/types";
 import { Icon } from "./icons";
+import { AnalystReviewNotes, FindingInstances } from "./finding-instances";
+import { groupFindings, type FindingInstance as UrlOccurrence } from "@/lib/finding-groups";
 
 export function FindingsTable({ findings, auditId }: { findings: Finding[]; auditId: string }) {
   const [filter, setFilter] = useState("All");
@@ -13,14 +15,10 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
     () => new Map(findings.map((finding) => [finding.id, finding.status])),
   );
   const [updatingUrls, setUpdatingUrls] = useState<Set<string>>(() => new Set());
-  const groups = useMemo(
-    () => groupFindings(findings, statusById),
-    [findings, statusById],
-  );
-  const visible = useMemo(
-    () => filter === "All" ? groups : groups.filter((item) => item.severity === filter),
-    [filter, groups],
-  );
+  const allGroups = useMemo(() => groupFindings(findings, statusById), [findings, statusById]);
+  const groups = allGroups.filter(group => group.kind !== "note");
+  const notes = allGroups.filter(group => group.kind === "note");
+  const visible = filter === "All" ? groups : groups.filter(item => item.severity === filter);
   function toggleFinding(id: string) {
     setSelected((current) => {
       const next = new Set(current);
@@ -89,6 +87,8 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
   }
   return (
     <>
+      <section className="card report-section">
+      <div className="section-title"><div><h2>Prioritized findings</h2><p>Open an issue for a short description and its affected pages, files, or links.</p></div></div>
       <div className="filterbar" aria-label="Filter findings">
         {["All", "Critical", "High", "Medium", "Low", "Info"].map((value) => {
           const matchingGroups = value === "All"
@@ -104,7 +104,7 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
       </div>
       {taskMessage && <p className="inline-message finding-message" role="status">{taskMessage}</p>}
       <div className="table-wrap">
-        <table>
+        <table className="finding-table">
           <thead><tr><th><span className="sr-only">Select</span></th><th>Finding</th><th>Severity</th><th>Occurrences</th><th>Affected URLs</th></tr></thead>
           <tbody>{visible.map((item) => <tr key={item.id}>
             <td><input type="checkbox" checked={selected.has(item.id)} onChange={() => toggleFinding(item.id)} aria-label={`Select ${item.title} for task creation`} /></td>
@@ -112,94 +112,15 @@ export function FindingsTable({ findings, auditId }: { findings: Finding[]; audi
             <td><span className={`severity severity-${item.severity.toLowerCase()}`}>{item.severity}</span></td>
             <td>{item.occurrences}</td>
             <td className="url-cell">
-              <details>
-                <summary>{item.resolvedCount}/{item.occurrences} fixed · View affected URLs</summary>
-                <div className="finding-url-list">
-                  {item.urls.map((occurrence) => {
-                    const pendingKey = `${item.key}:${occurrence.key}`;
-                    return <div key={occurrence.key} className={`finding-url-item${occurrence.resolved ? " resolved" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={occurrence.resolved}
-                        disabled={updatingUrls.has(pendingKey)}
-                        onChange={() => toggleUrl(item.key, occurrence)}
-                        aria-label={`Mark ${occurrence.url || "unreported URL"} ${occurrence.resolved ? "open" : "fixed"}`}
-                      />
-                      {occurrence.url
-                        ? <span><a href={occurrence.url} target="_blank" rel="noreferrer">{occurrence.url.replace(/^https?:\/\//, "")}<Icon name="external"/></a>{occurrence.resourceUrl && occurrence.resourceUrl !== occurrence.url && <small>Resource: <a href={occurrence.resourceUrl} target="_blank" rel="noreferrer">{occurrence.resourceUrl.replace(/^https?:\/\//, "")}</a></small>}</span>
-                        : <span>Site-wide / URL not reported</span>}
-                      {occurrence.details.map((detail) => <div key={detail.id}>
-                        {detail.description && <p style={{ whiteSpace: "pre-wrap" }}><strong>Evidence and impact:</strong> {detail.description}</p>}
-                        {detail.recommendation && <p style={{ whiteSpace: "pre-wrap" }}><strong>Recommendation:</strong> {detail.recommendation}</p>}
-                      </div>)}
-                    </div>;
-                  })}
-                </div>
-              </details>
+              <FindingInstances group={item} updatingKeys={updatingUrls} onToggle={instance => toggleUrl(item.key, instance)}/>
             </td>
           </tr>)}</tbody>
         </table>
       </div>
+      </section>
+      <AnalystReviewNotes groups={notes} updatingKeys={updatingUrls} onToggle={(group, instance) => toggleUrl(group.key, instance)}/>
     </>
   );
-}
-
-type UrlOccurrence = {
-  key: string;
-  url: string;
-  resourceUrl: string;
-  findingIds: string[];
-  details: Pick<Finding, "id" | "description" | "recommendation">[];
-  resolved: boolean;
-};
-
-type FindingGroup = Pick<Finding, "id" | "category" | "severity" | "title"> & {
-  key: string;
-  occurrences: number;
-  resolvedCount: number;
-  urls: UrlOccurrence[];
-};
-
-function groupFindings(
-  findings: Finding[],
-  statusById: Map<string, Finding["status"]>,
-): FindingGroup[] {
-  const groups = new Map<string, {
-    representative: Finding;
-    urls: Map<string, Finding[]>;
-  }>();
-
-  for (const finding of findings) {
-    const groupKey = `${finding.category}\u0000${finding.ruleKey}\u0000${finding.title}`;
-    const group = groups.get(groupKey) ?? {
-      representative: finding,
-      urls: new Map<string, Finding[]>(),
-    };
-    const urlKey = `${finding.pageUrl}\u0000${finding.resourceUrl ?? ""}` || `unreported:${finding.id}`;
-    group.urls.set(urlKey, [...(group.urls.get(urlKey) ?? []), finding]);
-    groups.set(groupKey, group);
-  }
-
-  return [...groups.entries()].map(([key, group]) => {
-    const urls = [...group.urls.entries()].map(([urlKey, members]) => ({
-      key: urlKey,
-      url: members[0]?.pageUrl || members[0]?.resourceUrl || "",
-      resourceUrl: members[0]?.resourceUrl || "",
-      findingIds: members.map((member) => member.id),
-      details: members.map(({ id, description, recommendation }) => ({ id, description, recommendation })),
-      resolved: members.every((member) => statusById.get(member.id) === "resolved"),
-    }));
-    return {
-      id: group.representative.id,
-      key,
-      category: group.representative.category,
-      severity: group.representative.severity,
-      title: group.representative.title,
-      occurrences: urls.length,
-      resolvedCount: urls.filter((url) => url.resolved).length,
-      urls,
-    };
-  });
 }
 
 export function ReportActions({ auditId, published: initialPublished = false }: { auditId: string; published?: boolean }) {
