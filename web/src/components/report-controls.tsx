@@ -202,27 +202,31 @@ function groupFindings(
   });
 }
 
-export function ReportActions({ auditId }: { auditId: string }) {
+export function ReportActions({ auditId, published: initialPublished = false }: { auditId: string; published?: boolean }) {
   const [message, setMessage] = useState("");
   const [share, setShare] = useState<{ shareUrl: string; pin: string } | null>(null);
+  const [published, setPublished] = useState(initialPublished);
   const [publishing, setPublishing] = useState(false);
   async function publish() {
     setPublishing(true);
     setMessage("");
     try {
       const response = await fetch(`/api/audits/${auditId}/publish`, { method: "POST" });
-      const body = (await response.json()) as { shareUrl?: string; pin?: string; error?: string };
-      if (!response.ok || !body.shareUrl || !body.pin) {
+      const body = (await response.json()) as { published?: boolean; reused?: boolean; shareUrl?: string | null; pin?: string | null; error?: string };
+      if (!response.ok || !body.published) {
         setMessage(body.error ?? "The report could not be published.");
         return;
       }
-      setShare({ shareUrl: body.shareUrl, pin: body.pin });
-      setMessage("Share link created. Copy the link and PIN now; the PIN cannot be recovered later.");
+      setPublished(true);
+      if (body.shareUrl && body.pin) setShare({ shareUrl: body.shareUrl, pin: body.pin });
+      setMessage(body.shareUrl
+        ? "Published. This link and PIN stay the same; saved edits appear automatically."
+        : "Already published. Continue using your existing shared link and PIN; saved edits appear automatically.");
     } catch {
       setMessage("The report could not be published.");
     } finally {
       setPublishing(false);
     }
   }
-  return <div><div className="action-row"><button className="button secondary" onClick={() => window.print()}><Icon name="download"/>Export PDF</button><button className="button secondary" onClick={() => window.location.assign(`/api/audits/${auditId}/export/csv`)}>Export CSV</button><button className="button primary" onClick={publish} disabled={publishing}>{publishing ? "Publishing…" : "Publish report"}</button></div>{message && <p className="inline-message" role="status">{message}</p>}{share && <div className="share-credentials" role="status"><a href={share.shareUrl} target="_blank" rel="noreferrer">{share.shareUrl}</a><strong>PIN: {share.pin}</strong></div>}</div>;
+  return <div><div className="action-row"><button className="button secondary" onClick={() => window.print()}><Icon name="download"/>Export PDF</button><button className="button secondary" onClick={() => window.location.assign(`/api/audits/${auditId}/export/csv`)}>Export CSV</button><button className="button primary" onClick={publish} disabled={publishing}>{publishing ? "Loading…" : published ? "View share link" : "Publish report"}</button></div>{published && <p className="inline-message"><strong>Published</strong> · Saved edits update the shared report automatically.</p>}{message && <p className="inline-message" role="status">{message}</p>}{share && <div className="share-credentials" role="status"><a href={share.shareUrl} target="_blank" rel="noreferrer">{share.shareUrl}</a><strong>PIN: {share.pin}</strong></div>}</div>;
 }

@@ -3,7 +3,7 @@ import { randomBytes, randomInt } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { isShareBackendConfigured, isSupabaseConfigured } from "@/lib/config";
-import { createShareLink } from "@/lib/share/server";
+import { publishReport } from "@/lib/share/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -14,7 +14,6 @@ export async function POST(
   const token = randomBytes(32).toString("base64url");
   const pin = String(randomInt(100000, 1000000));
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  const shareUrl = new URL(`/share/${token}`, request.url).toString();
 
   if (!isSupabaseConfigured || !isShareBackendConfigured) {
     return NextResponse.json(
@@ -31,7 +30,15 @@ export async function POST(
   }
 
   try {
-    await createShareLink(auditId, token, pin, expiresAt, actorId);
+    const publication = await publishReport(auditId, token, pin, expiresAt, actorId);
+    return NextResponse.json({
+      published: true,
+      reused: publication.reused,
+      shareUrl: publication.credentials
+        ? new URL(`/share/${publication.credentials.token}`, request.url).toString()
+        : null,
+      pin: publication.credentials?.pin ?? null,
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return NextResponse.json(
       { error: "Only an administrator can publish completed reports." },
@@ -39,9 +46,4 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({
-    shareUrl,
-    pin,
-    expiresAt: expiresAt.toISOString(),
-  });
 }

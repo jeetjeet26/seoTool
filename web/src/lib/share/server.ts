@@ -108,25 +108,30 @@ export async function validateTokenAndPin(
   return rows[0]?.audit_id ?? null;
 }
 
-export async function createShareLink(
+export async function publishReport(
   auditId: string,
   token: string,
   pin: string,
   expiresAt: Date,
   actorId: string,
-): Promise<string> {
+): Promise<{ credentials: { token: string; pin: string } | null; reused: boolean }> {
   const sql = database();
-  const rows = await sql<Array<{ link_id: string }>>`
-    select private.create_share_link(
+  const rows = await sql<Array<{ share_token: string | null; share_pin: string | null; reused: boolean }>>`
+    select * from private.publish_report(
       ${auditId}::uuid,
       ${token},
       ${pin},
       ${expiresAt.toISOString()}::timestamptz,
       ${actorId}::uuid
-    )::text as link_id
+    )
   `;
-  if (!rows[0]?.link_id) throw new Error("Share link was not created");
-  return rows[0].link_id;
+  if (!rows[0]) throw new Error("Report could not be published");
+  return {
+    credentials: rows[0].share_token && rows[0].share_pin
+      ? { token: rows[0].share_token, pin: rows[0].share_pin }
+      : null,
+    reused: rows[0].reused,
+  };
 }
 
 export async function loadPortal(auditId: string): Promise<PortalPayload | null> {
@@ -137,13 +142,15 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
       client_name: string;
       report_name: string;
       summary: Record<string, unknown>;
+      report_version: string;
     }>
   >`
     select
       a.id::text as audit_id,
       c.name as client_name,
       a.name as report_name,
-      a.summary
+      a.summary,
+      a.updated_at::text as report_version
     from public.audits a
     join public.clients c on c.id = a.client_id
     where a.id = ${auditId}::uuid
@@ -239,6 +246,7 @@ export async function loadPortal(auditId: string): Promise<PortalPayload | null>
     auditId: audit.audit_id,
     clientName: audit.client_name,
     reportName: audit.report_name,
+    reportVersion: audit.report_version,
     score: null,
     completedTasks: tasks.filter((task) => task.status === "done").length,
     totalTasks: tasks.length,
@@ -270,7 +278,7 @@ export async function loadPortalProgress(
   auditId: string,
 ): Promise<PortalProgress> {
   const sql = database();
-  const [taskRows, findingRows] = await Promise.all([
+  const [taskRows, findingRows, auditRows] = await Promise.all([
     sql<
       Array<{
         id: string;
@@ -292,6 +300,10 @@ export async function loadPortalProgress(
       from public.findings
       where audit_id = ${auditId}::uuid
     `,
+    sql<Array<{ report_version: string }>>`
+      select updated_at::text as report_version from public.audits
+      where id = ${auditId}::uuid and published_at is not null
+    `,
   ]);
   const tasks = taskRows.map((task) => ({
     id: task.id,
@@ -301,6 +313,7 @@ export async function loadPortalProgress(
     dueAt: task.due_at,
   }));
   return {
+    reportVersion: auditRows[0]?.report_version ?? "",
     completedTasks: tasks.filter((task) => task.status === "done").length,
     totalTasks: tasks.length,
     tasks,

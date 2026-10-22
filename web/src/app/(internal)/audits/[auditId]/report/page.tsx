@@ -52,7 +52,7 @@ export default async function ReportPage({ params }: { params: Promise<{ auditId
     <ReportChat key={auditId} auditId={auditId} reportName={summary.property_context?.name || audit.clientName} reportUrl={audit.url}/>
     <RunAutoRefresh active={summary.report_edit?.export_state === "pending"}/>
     <div className="breadcrumbs"><Link href={`/audits/${auditId}`}>Audit {auditId}</Link><Icon name="chevron"/><span>Report</span></div>
-    <PageHeader eyebrow="Technical SEO report" title={summary.property_context?.name || audit.clientName} description={`${summary.property_context?.location ? `${summary.property_context.location} · ` : ""}Prepared ${preparedDate} · ${audit.pages} pages analyzed`} action={<ReportActions auditId={auditId}/>}/>
+    <PageHeader eyebrow="Technical SEO report" title={summary.property_context?.name || audit.clientName} description={`${summary.property_context?.location ? `${summary.property_context.location} · ` : ""}Prepared ${preparedDate} · ${audit.pages} pages analyzed`} action={<ReportActions auditId={auditId} published={audit.status === "published"}/>}/>
     <AuditArchiveNotice archive={audit.archive}/>
     <section className="report-hero">
       <div><h2>Executive summary</h2><p>{executiveSummary(summary, findings.length)}</p></div>

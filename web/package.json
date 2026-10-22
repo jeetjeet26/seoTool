@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:report-publication": "node --test tests/report-publication.test.mjs",
     "test:report-chat": "node --test tests/report-chat.test.mjs tests/report-chat-model.test.mjs tests/report-chat-persistence.test.mjs tests/text-metrics.test.mjs tests/report-chat-client.test.mjs tests/report-chat-pending.test.mjs tests/data-auth.test.mjs tests/report-chat-research.test.mjs tests/report-chat-semrush.test.mjs tests/report-chat-live-page.test.mjs"
   },
   "dependencies": {

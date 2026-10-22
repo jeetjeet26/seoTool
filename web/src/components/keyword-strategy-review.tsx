@@ -77,7 +77,7 @@ export function KeywordStrategyReview({
       {error && <p className="notice" role="alert">{error}</p>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Keyword</th><th>Source</th><th>Intent</th><th>Position</th><th>Volume</th><th>CPC</th><th>Difficulty</th><th>Target page</th><th>Decision</th></tr></thead>
+          <thead><tr><th>Keyword</th><th>Intent</th><th>Position</th><th>Volume</th><th>CPC</th><th>Difficulty</th><th>Target page</th><th>Decision</th></tr></thead>
           <tbody>
             {keywords.map((item) => {
               const isApproved = (!auditId && item.source === "approved")
@@ -85,7 +85,6 @@ export function KeywordStrategyReview({
               const metricsPending = item.source === "analyst_provided_metrics_pending";
               return <tr key={`${item.source}-${item.keyword}`}>
                 <td><strong>{item.keyword}</strong></td>
-                <td>{isApproved ? "approved" : item.source === "approved" ? "proposed" : metricsPending ? "Analyst review · metrics pending" : item.source}</td>
                 <td>{item.intent}</td>
                 <td>{item.position ?? "—"}</td>
                 <td>{metricsPending ? "Pending" : formatNumber(item.volume)}</td>

@@ -10,6 +10,7 @@ export interface PortalTask {
 
 export interface PortalPayload {
   auditId: string;
+  reportVersion: string;
   clientName: string;
   reportName: string;
   score: number | null;
@@ -21,6 +22,7 @@ export interface PortalPayload {
 }
 
 export interface PortalProgress {
+  reportVersion: string;
   completedTasks: number;
   totalTasks: number;
   tasks: PortalTask[];

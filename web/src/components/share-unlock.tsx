@@ -53,6 +53,18 @@ export function ShareUnlock({ token }: { token: string }) {
             const body = (await response.json()) as { progress?: PortalProgress };
             if (body.progress) {
               const progress = body.progress;
+              if (portalRef.current && progress.reportVersion !== portalRef.current.reportVersion) {
+                const updated = await fetch(`/api/share/${encodeURIComponent(token)}`, {
+                  signal: controller.signal,
+                  cache: "no-store",
+                });
+                if (updated.ok) {
+                  const fresh = (await updated.json()) as { portal?: PortalPayload };
+                  if (fresh.portal && !stopped) setPortal(fresh.portal);
+                }
+                if (!stopped) timer = setTimeout(refresh, 5000);
+                return;
+              }
               const statuses = new Map(
                 progress.findings.map((finding) => [finding.id, finding.status]),
               );
